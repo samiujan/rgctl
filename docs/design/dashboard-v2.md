@@ -193,7 +193,7 @@ _Update on every phase PR._
 | Audit defect fixes — tab bar (D6) | prereq | **not started** | IA change; belongs with the v2 shell |
 | Audit defect fixes — favicon (D8) | prereq | **not started** | Missing icon → 404 per load |
 | `dashboard/dist` regen | prereq | **blocked** | Source fixes are not in the embedded bundle until `dist` is rebuilt with `wasm-pack` |
-| `rgctl review export` | 0 | **not started** | `.rgctl/workflows/review.json` |
+| `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; read-only, composed, tested (`tests/review_paths_integration.rs`) |
 | v2 shell + flag | 1 | **not started** | Blocked on the Preact→React decision |
 | Review Room | 2 | **not started** | |
 | Security Room | 3 | **not started** | |
