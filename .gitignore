@@ -81,3 +81,14 @@ website/*.tsbuildinfo
 website/.env
 website/.env.*
 website/public/demos/
+
+# Dashboard v2 mock (runnable prototype)
+mock/node_modules/
+mock/dist/
+mock/*.tsbuildinfo
+
+# ...but keep its dataset. Line 54 above ignores `graph.json` by basename to keep
+# generated repo graphs out of the tree; mock/src/data/graph.json is neither
+# generated nor a repo graph — it is hand-built, anonymized fixture source, and
+# the mock does not build without it.
+!mock/src/data/graph.json
