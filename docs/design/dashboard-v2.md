@@ -86,23 +86,42 @@ Focus is *ambient*: it constrains rooms, it is never a prerequisite to render on
 
 | Concern | Choice | Why |
 |---|---|---|
-| Routing / state | TanStack Router + Query | Search-param state ⇒ shareable URLs; `Query` cache keyed by `graph_digest`, `staleTime: Infinity` for immutable artifacts |
-| Tables | TanStack Table + Virtual | 300k-node lists without DOM blowup |
-| Components | shadcn/ui + Tailwind + Radix | Accessible primitives, no runtime CDN |
-| Client state | Zustand (`useFocus`, `useReviewView`, `usePlayback`, `useUI`) | Stores **references** (keys/ids), never payloads |
-| 3D | three.js + `@react-three/fiber` + instancing | Only where depth is genuine data |
+| Routing / state | Preact-compatible router (e.g. `wouter`/`preact-router`) + `@tanstack/query-core` for caching | Search-param state ⇒ shareable URLs; cache keyed by `graph_digest` with `staleTime: Infinity` for immutable artifacts. TanStack Router itself is React/Solid only — see the caveat below |
+| Tables | `@tanstack/table-core` + `@tanstack/virtual-core` | Framework-agnostic cores, so no compat shim needed for 300k-node lists |
+| Components | Radix primitives + Tailwind, **if the compat spike passes**; otherwise hand-rolled | shadcn/ui assumes React — and so does Radix. Both are candidates only via `preact/compat`; see the caveat below |
+| Client state | Zustand (vanilla store, thin Preact binding) | Stores **references** (keys/ids), never payloads; the core is framework-agnostic |
+| 3D | **three.js, mounted imperatively** | `@react-three/fiber` is **out** — it needs React's reconciler, which `preact/compat` does not provide. Follow the existing `sigmaMount.ts` pattern instead |
 
-### Migration risk: Preact → React
+**Caveat — verify, don't assume.** `@preact/preset-vite` is already in use, and it aliases `react` /
+`react-dom` → `preact/compat`. That is why React-shaped libraries are even candidates. But the alias is a
+shim, not a guarantee: each library above must be **spiked in change 1** before the stack is treated as
+settled, and any that fails gets replaced rather than shimmed harder. `@react-three/fiber` is already
+known to fail and is excluded on that basis.
 
-shadcn/ui assumes React. The current dashboard is Preact (`preact/hooks` throughout, e.g. `dashboard/src/DataflowView.tsx:1`) with sigma.js 3 and graphology.
+### Decision: stay on Preact
 
-This is the **largest single risk in v2** and must be resolved before the shell change is accepted. Options:
+shadcn/ui assumes React, and the current dashboard is Preact (`preact/hooks` throughout, e.g.
+`dashboard/src/DataflowView.tsx:1`) with sigma.js 3 and graphology. This was flagged as the largest
+single risk in v2. **Decided: stay on Preact.**
 
-1. **Migrate the app to React** (`preact/compat` aliasing removed), keep sigma.js/graphology (both framework-agnostic). Cleanest long-term; touches every view.
-2. **Stay on Preact**, use Radix primitives directly with Tailwind, and drop shadcn/ui. Avoids the migration; loses shadcn's prebuilt components and ecosystem.
-3. **Hybrid** — new rooms in React, embedded via islands. Rejected: two component runtimes in one bundle is a permanent tax.
+The options considered:
 
-Recommendation: **(1)** for the v2 app, gated behind the flag so v1 stays intact during migration. Decide in `add-dashboard-v2-shell`; do not start room work before it is settled.
+1. ~~Migrate the app to React, keep sigma.js/graphology.~~ Rejected — 9.7k LOC across every view, and it
+   spends the v2 budget on a framework change rather than on the information architecture. Upstream has
+   repeatedly chosen simplicity over breadth (MCP and daemon mode were both removed for it); a whole-app
+   migration is the opposite of that.
+2. **Stay on Preact** — Tailwind for styling, Radix primitives via `preact/compat` if the spike passes,
+   and hand-roll the small number of components v2 actually needs. No migration, no second runtime, and
+   the 18 dashboard test files keep applying to the code they were written for.
+3. ~~Hybrid islands.~~ Rejected — two component runtimes in one bundle is a permanent tax.
+
+**Consequences to accept:** no shadcn/ui component set, and Radix Primitives is React-only too, so the
+component layer is only available via the compat shim. Budget for spiking it early, and for hand-rolling
+the handful of primitives the rooms need (dialog, popover, tabs, table wrapper, command palette) if the
+spike fails. Any React-only dependency is now a *candidate* rather than a given, so `package.json` needs
+checking before adding a library, not after.
+
+This decision is what unblocked change 1.
 
 ### Where 3D is justified
 
@@ -194,7 +213,7 @@ _Update on every phase PR._
 | Audit defect fixes — favicon (D8) | prereq | **not started** | Missing icon → 404 per load |
 | `dashboard/dist` regen | prereq | **blocked** | Source fixes are not in the embedded bundle until `dist` is rebuilt with `wasm-pack` |
 | `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; read-only, composed, tested (`tests/review_paths_integration.rs`) |
-| v2 shell + flag | 1 | **not started** | Blocked on the Preact→React decision |
+| v2 shell + flag | 1 | **next** | Unblocked — Preact decided; stack still needs spiking |
 | Review Room | 2 | **not started** | |
 | Security Room | 3 | **not started** | |
 | Architecture City | 4 | **not started** | |
@@ -206,7 +225,7 @@ _Update on every phase PR._
 
 ## Open questions
 
-1. **Preact → React** (see Migration risk). Blocks change 1. Needs a decision, not more analysis.
+1. ~~**Preact → React.**~~ **Decided: stay on Preact** — see [Decision: stay on Preact](#decision-stay-on-preact). The follow-on task is spiking the four libraries in the stack table, since `preact/compat` is a shim rather than a guarantee.
 2. **`rgctl review` command surface.** Change 0 defines `review export`. Does `review` also gain a `--since` range, or does it always diff against the working tree?
 3. **Where does "coverage" come from?** The Instrument bar promises `coverage ●●●○○`. That must be derived from real per-language support tiers ([tier-1-language-support.md](../tier-1-language-support.md)), not asserted.
 4. **Proof surface honesty.** Change 5 publishes a speed matrix and correctness scorecard. Publishing only wins would violate rule 5; it must publish the limits too (intra-procedural taint, `Calls`-only blast traversal, approximation regimes).
