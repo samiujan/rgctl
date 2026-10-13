@@ -86,13 +86,13 @@ Focus is *ambient*: it constrains rooms, it is never a prerequisite to render on
 
 | Concern | Choice | Why |
 |---|---|---|
-| Framework | **React 19** | see the decision below — the compat shim was measured, and it failed |
-| Routing / state | TanStack Router (+ search params) | Search-param state ⇒ shareable URLs. Unavailable under Preact |
-| Caching | `@tanstack/query-core` | Framework-agnostic; cache keyed by `graph_digest`, `staleTime: Infinity` for immutable artifacts |
-| Tables | `@tanstack/table-core` + `@tanstack/virtual-core` | Framework-agnostic cores; 300k-node lists without DOM blowup |
-| Components | **Radix Primitives** + Tailwind (shadcn/ui optional on top) | Radix's portal primitives are the component layer rooms need, and they do not work under `preact/compat` |
-| Client state | Zustand | Stores **references** (keys/ids), never payloads |
-| 3D | three.js + `@react-three/fiber` | Now available — R3F needs React's reconciler, so it was out under Preact |
+| Framework | **React 19** | Every choice below depends on it; the evidence for the switch is in the next section |
+| Routing | **TanStack Router** — typed routes, validated search params | All view state *is* search-param state (`room`, `lens`, `focus`), so it has to be a shareable URL. Typed, validated params stop the Focus key from degrading into a stringly-typed free-for-all |
+| Caching | **`@tanstack/react-query`** | Artifacts are immutable per `graph_digest`, so `staleTime: Infinity` on a digest-keyed cache. The React bindings are the intended entry point — no hand-wired store subscription |
+| Tables | **`@tanstack/react-table`** + **`@tanstack/react-virtual`** | 300k-node lists without DOM blowup; headless, so rendering and styling stay ours |
+| Components | **Radix Primitives** + Tailwind (shadcn/ui optional on top) | The overlay primitives rooms need — dialog, popover, dropdown, tooltip, select, command palette — with focus management, dismissal and ARIA already solved |
+| Client state | **Zustand** | Client-only state, storing **references** (keys and ids), never payloads |
+| 3D | **three.js + `@react-three/fiber`** | Only where depth is genuine data (below); R3F for declarative scene composition and instancing |
 
 ### Decision: migrate to React
 
@@ -106,7 +106,11 @@ its 18 test files untouched until v2 reaches parity; the legacy views are then d
 ported. The migration is therefore *deferred*, not avoided — and by the time it is forced, the code being
 migrated is code we intend to delete.
 
-### Why: the compat shim failed, measurably
+### Why React: the evidence
+
+This section exists to justify a reversal, so it records the measurement rather than the conclusion. If
+you are reading the design rather than auditing the decision, the stack table above is the outcome and
+this is the reasoning behind it.
 
 `@preact/preset-vite` aliases `react` → `preact/compat` and the shim reports itself as React 18.3.1 to
 version-sniffing libraries. Each candidate below was **rendered or driven**, not merely imported.
@@ -163,11 +167,29 @@ See the mock's README for how to run it and what each screen demonstrates.
 - **No dual runtime.** v2 is a separate bundle behind a flag, so React and Preact are never both loaded.
 - **The Preact → React migration of v1 is deferred**, and should happen only at the point the legacy
   views are deleted.
-- **`@react-three/fiber` is back on the table** for change 4, so the 3D Code City no longer needs
-  imperative three.js mounting.
 - **Harness work still required:** `dashboard/vitest.config.ts` declares **no plugins and no DOM
   environment**, so no component test can run today. Change 1 must add the React plugin and a DOM
-  environment regardless of framework.
+  environment. This one is not framework-specific — it was needed either way.
+
+### What the framework change reclaims
+
+Three capabilities had been designed *around* rather than chosen, because `preact/compat` could not
+provide them. All three are now available again, and the stack table above reflects that:
+
+| Was going to be | Now is | What it buys |
+|---|---|---|
+| hand-rolled `URLSearchParams` + `popstate` | TanStack Router | typed, validated route params; loaders; no bespoke routing to maintain |
+| hand-rolled overlays on `preact/compat`'s `createPortal` | **Radix Primitives** | focus traps, dismissal, scroll locking, ARIA wiring — the parts that are tedious to get right |
+| three.js mounted imperatively | `@react-three/fiber` | declarative scene graph for change 4 |
+
+**The design itself is unaffected.** The framework never constrained the parts that matter: the
+Instrument/Orientation/Rooms/Lenses architecture, the portable `StableNodeKey` Focus, the receipts, or
+the honesty rules. Those were decided on product grounds and survive the switch intact. What changed is
+what the shell is built out of, not what it does.
+
+*Prototype note:* the mock in `mock/` still hand-rolls its URL state, because it was written during the
+Preact phase and its purpose is to prove the IA and the Radix layer. It demonstrates the Focus mechanism
+and the shell, not the routing choice.
 
 
 ### Where 3D is justified
