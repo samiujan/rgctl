@@ -1,4 +1,15 @@
-@import "tailwindcss";
+/* Tailwind's automatic content detection scans everything it can find, and `.gitignore` decides how
+   far it reaches — so the shipped stylesheet can change for reasons that have nothing to do with
+   the code. Measured here: when `src/data/graph.json` (259 KB of data, not markup) was un-ignored,
+   identifiers inside it produced 1.2 KB of extra CSS, and the bundle went 25.89 -> 27.12 KB.
+   Prose counts too: adding three class-shaped tokens to README.md changed the CSS with no code
+   change at all.
+   So name the real sources, and exclude the dataset explicitly — `@source` still honours
+   `.gitignore` for files beneath it, so without this the output depends on VCS configuration. */
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "../src";
+@source not "../src/data/graph.json";
 
 :root { color-scheme: dark; }
 body { margin: 0; background: #0b0d10; color: #e6e8eb;
