@@ -86,68 +86,89 @@ Focus is *ambient*: it constrains rooms, it is never a prerequisite to render on
 
 | Concern | Choice | Why |
 |---|---|---|
-| Routing / state | **Hand-rolled URL state** (≈40 lines over `URLSearchParams` + `popstate`) | Spiked and chosen over `wouter`. Zero deps, no shim, and search-param state is all we need — see the spike results below |
-| Caching | `@tanstack/query-core` | Framework-agnostic; spiked working, including `staleTime: Infinity` on a digest-keyed cache |
-| Tables | `@tanstack/table-core` + `@tanstack/virtual-core` | Framework-agnostic cores, so no shim involved |
-| Components | **Hand-rolled on `preact/compat`'s `createPortal`** + Tailwind | Radix's *portal* primitives fail under the shim; its non-portal ones work. Hand-rolling ~5 primitives avoids a mixed stack — see the spike results below |
-| Client state | Zustand vanilla store + `preact`'s `useSyncExternalStore` | Spiked working. Stores **references** (keys/ids), never payloads |
-| 3D | **three.js, mounted imperatively** | `@react-three/fiber` is out — it needs React's reconciler. Follow the existing `sigmaMount.ts` pattern |
+| Framework | **React 19** | see the decision below — the compat shim was measured, and it failed |
+| Routing / state | TanStack Router (+ search params) | Search-param state ⇒ shareable URLs. Unavailable under Preact |
+| Caching | `@tanstack/query-core` | Framework-agnostic; cache keyed by `graph_digest`, `staleTime: Infinity` for immutable artifacts |
+| Tables | `@tanstack/table-core` + `@tanstack/virtual-core` | Framework-agnostic cores; 300k-node lists without DOM blowup |
+| Components | **Radix Primitives** + Tailwind (shadcn/ui optional on top) | Radix's portal primitives are the component layer rooms need, and they do not work under `preact/compat` |
+| Client state | Zustand | Stores **references** (keys/ids), never payloads |
+| 3D | three.js + `@react-three/fiber` | Now available — R3F needs React's reconciler, so it was out under Preact |
 
-### Spike results (change 1, executed)
+### Decision: migrate to React
 
-Each candidate was rendered or exercised under `preact/compat` — importing successfully was not counted
-as evidence. `@preact/preset-vite` aliases `react` → `preact/compat`, and the alias reports itself as
-React **18.3.1** to version-sniffing libraries.
+**Decided: migrate to React.** The deciding evidence is a spike that was run to justify *staying* on
+Preact and returned the opposite answer. It is recorded in full below rather than summarised, because the
+argument for this reversal is entirely empirical.
+
+The objection to migrating was cost: 9.7k LOC across every view. **That objection is weaker than it
+looked**, because v2 is additive behind a flag and ships as its own bundle. v1 keeps its Preact code and
+its 18 test files untouched until v2 reaches parity; the legacy views are then deleted rather than
+ported. The migration is therefore *deferred*, not avoided — and by the time it is forced, the code being
+migrated is code we intend to delete.
+
+### Why: the compat shim failed, measurably
+
+`@preact/preset-vite` aliases `react` → `preact/compat` and the shim reports itself as React 18.3.1 to
+version-sniffing libraries. Each candidate below was **rendered or driven**, not merely imported.
 
 | Candidate | Result | Evidence |
 |---|---|---|
-| `@tanstack/query-core` | ✅ **keep** | digest-keyed cache; a second fetch with `staleTime: Infinity` did not call `queryFn`; a different digest did |
-| Zustand vanilla + `useSyncExternalStore` | ✅ **keep** | Focus key round-trips; subscribers re-render on `setState` |
-| Hand-rolled `URLSearchParams` + `history` | ✅ **choose** | `focus` / `room` / `lens` round-trip with no library at all |
-| `preact/compat` `createPortal` | ✅ **usable** | renders into a target host — so overlays are viable without Radix |
-| Radix, **non-portal** primitive | ✅ works | `role="dialog"` with `aria-labelledby` correctly wired, so `useId`, `forwardRef` and context are fine |
-| Radix, **`Dialog.Portal`** | ❌ **reject** | renders nothing, and throws `InvalidCharacterError: "[object Object]" did not match the QName production` |
-| `wouter` 3.13 | ❌ **reject** | declares `react` as a peer dep and ships no Preact entry; binds the real React in `node_modules` via `useSyncExternalStore` and throws |
+| `@tanstack/query-core` | ✅ keep | digest-keyed cache; `staleTime: Infinity` did not refetch; a different digest did |
+| Zustand vanilla + `useSyncExternalStore` | ✅ keep | Focus key round-trips; subscribers re-render |
+| Hand-rolled `URLSearchParams` + `history` | ✅ works | `focus`/`room`/`lens` round-trip with no library |
+| `preact/compat` `createPortal` | ✅ works | renders into a target host |
+| Radix, **non-portal** primitive | ✅ works | `role="dialog"` with `aria-labelledby` wired — `useId`, `forwardRef`, context all fine |
+| **Radix `Dialog.Portal`** | ❌ **fails** | renders nothing; throws `InvalidCharacterError: "[object Object]" did not match the QName production` |
+| **`wouter` 3.13** | ❌ fails | peer-depends on `react`, ships no Preact entry, binds the real React in `node_modules` via `useSyncExternalStore` |
+| TanStack Router | ❌ unavailable | React/Solid only |
+| `@react-three/fiber` | ❌ unavailable | needs React's reconciler |
 
-**The operative finding:** the failure is **portals as Radix uses them**, not portals in general —
-`preact/compat`'s own `createPortal` works. Since rooms need overlays (command palette, dialog, popover),
-and hand-rolling them on the working primitive is a few dozen lines, the stack drops Radix rather than
-mixing Radix-inline with hand-rolled-overlays.
+The failure is specific to **portals as Radix uses them** — `preact/compat`'s own `createPortal` is fine.
+But that is precisely the set a rooms UI depends on: dialog, popover, dropdown, tooltip, select, command
+palette. The components that *do* work under the shim (button, card, badge, input, table, tabs) are the
+ones worth hand-rolling anyway.
 
-**Latent hazard discovered:** `npm install @radix-ui/*` pulls **real React 19** into `node_modules` as a
-peer dependency. Any React-shaped library can then silently bind to it instead of the shim and fail in
-ways that look like our bug. Another reason to prefer framework-agnostic cores and hand-rolled code.
+**A latent hazard makes this worse than a one-off incompatibility:** `npm install @radix-ui/*` pulls
+**real React 19** into `node_modules` as a peer dependency. Any React-shaped library can then silently
+bind to it instead of the shim, and fail in a way that looks like our bug rather than a stack problem.
+On React that entire class of failure disappears.
 
-**Harness finding for change 1:** `dashboard/vitest.config.ts` declares **no plugins and no DOM
-environment**, so the preact preset and its alias are absent from test runs and no component test is
-possible today. Change 1 must add the preset, a DOM environment, and inlining for any React-shaped
-dependency — otherwise Vitest externalizes `node_modules` and bypasses the alias entirely.
+**The same spike also showed React is not expensive here.** Measured with esbuild `--minify` then gzip:
 
+| Runtime | Minified | Gzipped |
+|---|---|---|
+| React + `react-dom/client` | 217 KB | **67 KB** |
+| Preact | 10 KB | **4 KB** |
 
-### Decision: stay on Preact
+So React costs **~63 KB gzipped more**. The shipping bundle is **1.7 MB** and served locally — CodeMirror
+alone is 146 KB gzipped — so this is roughly **2%**. Shipping 63 KB to stop fighting a shim is not a close
+call; the usual Preact-versus-React size argument simply does not apply to a bundle embedded in a binary.
 
-shadcn/ui assumes React, and the current dashboard is Preact (`preact/hooks` throughout, e.g.
-`dashboard/src/DataflowView.tsx:1`) with sigma.js 3 and graphology. This was flagged as the largest
-single risk in v2. **Decided: stay on Preact.**
+*Alternatives rejected:* staying on Preact and hand-rolling overlays (the spike above says the shim will
+keep costing us); hybrid islands (two runtimes in one bundle is a permanent tax).
 
-The options considered:
+### Prototype
 
-1. ~~Migrate the app to React, keep sigma.js/graphology.~~ Rejected — 9.7k LOC across every view, and it
-   spends the v2 budget on a framework change rather than on the information architecture. Upstream has
-   repeatedly chosen simplicity over breadth (MCP and daemon mode were both removed for it); a whole-app
-   migration is the opposite of that.
-2. **Stay on Preact** — Tailwind for styling, Radix primitives via `preact/compat` if the spike passes,
-   and hand-roll the small number of components v2 actually needs. No migration, no second runtime, and
-   the 18 dashboard test files keep applying to the code they were written for.
-3. ~~Hybrid islands.~~ Rejected — two component runtimes in one bundle is a permanent tax.
+A working, clickable mock built on this stack with real data from a live `.rgctl/` — React 19 + Radix +
+Tailwind, ~113 KB gzipped including the dataset. It demonstrates the shell, the Focus carried across
+rooms, and — as the decisive artefact — a Radix `Dialog.Portal` rendering correctly where the Preact
+build produced nothing.
 
-**Consequences to accept:** no shadcn/ui component set, and Radix Primitives is React-only too, so the
-component layer is only available via the compat shim. Budget for spiking it early, and for hand-rolling
-the handful of primitives the rooms need (dialog, popover, tabs, table wrapper, command palette) if the
-spike fails. Any React-only dependency is now a *candidate* rather than a given, so `package.json` needs
-checking before adding a library, not after.
+See the mock's README for how to run it and what each screen demonstrates.
 
-This decision is what unblocked change 1.
+### Consequences
+
+- **v1 is untouched.** `--with-dashboard` keeps producing the existing Preact bundle, so all 18 dashboard
+  test files stay meaningful and the change stays bisectable.
+- **No dual runtime.** v2 is a separate bundle behind a flag, so React and Preact are never both loaded.
+- **The Preact → React migration of v1 is deferred**, and should happen only at the point the legacy
+  views are deleted.
+- **`@react-three/fiber` is back on the table** for change 4, so the 3D Code City no longer needs
+  imperative three.js mounting.
+- **Harness work still required:** `dashboard/vitest.config.ts` declares **no plugins and no DOM
+  environment**, so no component test can run today. Change 1 must add the React plugin and a DOM
+  environment regardless of framework.
+
 
 ### Where 3D is justified
 
@@ -239,7 +260,7 @@ _Update on every phase PR._
 | Audit defect fixes — favicon (D8) | prereq | **not started** | Missing icon → 404 per load |
 | `dashboard/dist` regen | prereq | **blocked** | Source fixes are not in the embedded bundle until `dist` is rebuilt with `wasm-pack` |
 | `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; read-only, composed, tested (`tests/review_paths_integration.rs`) |
-| v2 shell + flag | 1 | **next** | Unblocked — Preact decided; stack still needs spiking |
+| v2 shell + flag | 1 | **next** | Unblocked — React decided, stack settled by spike; mock prototyped |
 | Review Room | 2 | **not started** | |
 | Security Room | 3 | **not started** | |
 | Architecture City | 4 | **not started** | |
@@ -251,7 +272,7 @@ _Update on every phase PR._
 
 ## Open questions
 
-1. ~~**Preact → React.**~~ **Decided: stay on Preact** — see [Decision: stay on Preact](#decision-stay-on-preact). The follow-on task is spiking the four libraries in the stack table, since `preact/compat` is a shim rather than a guarantee.
+1. ~~**Preact → React.**~~ **Decided: migrate to React** — see [Decision: migrate to React](#decision-migrate-to-react). Settled by measurement, not preference: the compat shim failed on Radix portals and `wouter`, and React costs ~63 KB gzipped against a 1.7 MB bundle.
 2. **`rgctl review` command surface.** Change 0 defines `review export`. Does `review` also gain a `--since` range, or does it always diff against the working tree?
 3. **Where does "coverage" come from?** The Instrument bar promises `coverage ●●●○○`. That must be derived from real per-language support tiers ([tier-1-language-support.md](../tier-1-language-support.md)), not asserted.
 4. **Proof surface honesty.** Change 5 publishes a speed matrix and correctness scorecard. Publishing only wins would violate rule 5; it must publish the limits too (intra-procedural taint, `Calls`-only blast traversal, approximation regimes).
