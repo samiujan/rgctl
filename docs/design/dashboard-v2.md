@@ -86,17 +86,43 @@ Focus is *ambient*: it constrains rooms, it is never a prerequisite to render on
 
 | Concern | Choice | Why |
 |---|---|---|
-| Routing / state | Preact-compatible router (e.g. `wouter`/`preact-router`) + `@tanstack/query-core` for caching | Search-param state ⇒ shareable URLs; cache keyed by `graph_digest` with `staleTime: Infinity` for immutable artifacts. TanStack Router itself is React/Solid only — see the caveat below |
-| Tables | `@tanstack/table-core` + `@tanstack/virtual-core` | Framework-agnostic cores, so no compat shim needed for 300k-node lists |
-| Components | Radix primitives + Tailwind, **if the compat spike passes**; otherwise hand-rolled | shadcn/ui assumes React — and so does Radix. Both are candidates only via `preact/compat`; see the caveat below |
-| Client state | Zustand (vanilla store, thin Preact binding) | Stores **references** (keys/ids), never payloads; the core is framework-agnostic |
-| 3D | **three.js, mounted imperatively** | `@react-three/fiber` is **out** — it needs React's reconciler, which `preact/compat` does not provide. Follow the existing `sigmaMount.ts` pattern instead |
+| Routing / state | **Hand-rolled URL state** (≈40 lines over `URLSearchParams` + `popstate`) | Spiked and chosen over `wouter`. Zero deps, no shim, and search-param state is all we need — see the spike results below |
+| Caching | `@tanstack/query-core` | Framework-agnostic; spiked working, including `staleTime: Infinity` on a digest-keyed cache |
+| Tables | `@tanstack/table-core` + `@tanstack/virtual-core` | Framework-agnostic cores, so no shim involved |
+| Components | **Hand-rolled on `preact/compat`'s `createPortal`** + Tailwind | Radix's *portal* primitives fail under the shim; its non-portal ones work. Hand-rolling ~5 primitives avoids a mixed stack — see the spike results below |
+| Client state | Zustand vanilla store + `preact`'s `useSyncExternalStore` | Spiked working. Stores **references** (keys/ids), never payloads |
+| 3D | **three.js, mounted imperatively** | `@react-three/fiber` is out — it needs React's reconciler. Follow the existing `sigmaMount.ts` pattern |
 
-**Caveat — verify, don't assume.** `@preact/preset-vite` is already in use, and it aliases `react` /
-`react-dom` → `preact/compat`. That is why React-shaped libraries are even candidates. But the alias is a
-shim, not a guarantee: each library above must be **spiked in change 1** before the stack is treated as
-settled, and any that fails gets replaced rather than shimmed harder. `@react-three/fiber` is already
-known to fail and is excluded on that basis.
+### Spike results (change 1, executed)
+
+Each candidate was rendered or exercised under `preact/compat` — importing successfully was not counted
+as evidence. `@preact/preset-vite` aliases `react` → `preact/compat`, and the alias reports itself as
+React **18.3.1** to version-sniffing libraries.
+
+| Candidate | Result | Evidence |
+|---|---|---|
+| `@tanstack/query-core` | ✅ **keep** | digest-keyed cache; a second fetch with `staleTime: Infinity` did not call `queryFn`; a different digest did |
+| Zustand vanilla + `useSyncExternalStore` | ✅ **keep** | Focus key round-trips; subscribers re-render on `setState` |
+| Hand-rolled `URLSearchParams` + `history` | ✅ **choose** | `focus` / `room` / `lens` round-trip with no library at all |
+| `preact/compat` `createPortal` | ✅ **usable** | renders into a target host — so overlays are viable without Radix |
+| Radix, **non-portal** primitive | ✅ works | `role="dialog"` with `aria-labelledby` correctly wired, so `useId`, `forwardRef` and context are fine |
+| Radix, **`Dialog.Portal`** | ❌ **reject** | renders nothing, and throws `InvalidCharacterError: "[object Object]" did not match the QName production` |
+| `wouter` 3.13 | ❌ **reject** | declares `react` as a peer dep and ships no Preact entry; binds the real React in `node_modules` via `useSyncExternalStore` and throws |
+
+**The operative finding:** the failure is **portals as Radix uses them**, not portals in general —
+`preact/compat`'s own `createPortal` works. Since rooms need overlays (command palette, dialog, popover),
+and hand-rolling them on the working primitive is a few dozen lines, the stack drops Radix rather than
+mixing Radix-inline with hand-rolled-overlays.
+
+**Latent hazard discovered:** `npm install @radix-ui/*` pulls **real React 19** into `node_modules` as a
+peer dependency. Any React-shaped library can then silently bind to it instead of the shim and fail in
+ways that look like our bug. Another reason to prefer framework-agnostic cores and hand-rolled code.
+
+**Harness finding for change 1:** `dashboard/vitest.config.ts` declares **no plugins and no DOM
+environment**, so the preact preset and its alias are absent from test runs and no component test is
+possible today. Change 1 must add the preset, a DOM environment, and inlining for any React-shaped
+dependency — otherwise Vitest externalizes `node_modules` and bypasses the alias entirely.
+
 
 ### Decision: stay on Preact
 
