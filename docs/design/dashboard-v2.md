@@ -153,12 +153,12 @@ keep costing us); hybrid islands (two runtimes in one bundle is a permanent tax)
 
 ### Prototype
 
-A working, clickable mock built on this stack with real data from a live `.rgctl/` — React 19 + Radix +
-Tailwind, ~113 KB gzipped including the dataset. It demonstrates the shell, the Focus carried across
-rooms, and — as the decisive artefact — a Radix `Dialog.Portal` rendering correctly where the Preact
-build produced nothing.
+A working, clickable mock built on this stack with real data from a live `.rgctl/` — React 19 + TanStack
+Router + Radix + Tailwind, **583 KB / 167 KB gzipped** including 259 KB of dataset. It demonstrates the
+shell, the Focus carried across rooms and lenses through typed route params, and — as the decisive
+artefact — a Radix `Dialog.Portal` rendering correctly where the Preact build produced nothing.
 
-See the mock's README for how to run it and what each screen demonstrates.
+See [`mock/README.md`](../../mock/README.md) for how to run it and what each screen demonstrates.
 
 ### Consequences
 
@@ -187,9 +187,10 @@ Instrument/Orientation/Rooms/Lenses architecture, the portable `StableNodeKey` F
 the honesty rules. Those were decided on product grounds and survive the switch intact. What changed is
 what the shell is built out of, not what it does.
 
-*Prototype note:* the mock in `mock/` still hand-rolls its URL state, because it was written during the
-Preact phase and its purpose is to prove the IA and the Radix layer. It demonstrates the Focus mechanism
-and the shell, not the routing choice.
+*Prototype note:* the mock now routes through **TanStack Router** rather than the hand-rolled
+`URLSearchParams` + `popstate` it started with, so it demonstrates the routing choice as well as the
+Focus mechanism — a `focus` and `lens` survive a view change, a reload, and a shared URL. It was ported
+after the framework decision rather than before, which is why the earlier note here said otherwise.
 
 
 ### Where 3D is justified
