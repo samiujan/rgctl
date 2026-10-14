@@ -153,12 +153,32 @@ keep costing us); hybrid islands (two runtimes in one bundle is a permanent tax)
 
 ### Prototype
 
-A working, clickable mock built on this stack with real data from a live `.rgctl/` — React 19 + TanStack
-Router + Radix + Tailwind, **583 KB / 167 KB gzipped** including 259 KB of dataset. It demonstrates the
-shell, the Focus carried across rooms and lenses through typed route params, and — as the decisive
-artefact — a Radix `Dialog.Portal` rendering correctly where the Preact build produced nothing.
+A working, clickable mock was built on this stack with real data from a live `.rgctl/` — React 19 +
+TanStack Router + Radix + Tailwind, **583 KB / 167 KB gzipped** including 259 KB of dataset. It
+demonstrated the shell, the Focus carried across rooms and lenses through typed route params, and — as
+the decisive artefact — a Radix `Dialog.Portal` rendering correctly where the Preact build produced
+nothing.
 
-See [`mock/README.md`](../../mock/README.md) for how to run it and what each screen demonstrates.
+**The mock has served its purpose and is retired.** The screenshots below are the record;
+they are committed rather than linked to a running app, and the prototype code is tagged
+`mock-v2-prototype` in this repository rather than carried forward. Design decisions should now be
+settled in the real implementation, where they can be tested against a real graph.
+
+| | | |
+|---|---|---|
+| ![Orientation: the Repo room](dashboard-v2/screens/01-repo-orientation.png) | ![The Focus and compiler IR](dashboard-v2/screens/02-focus-cfg-dominance.png) | ![Radix portal](dashboard-v2/screens/03-command-palette-radix-portal.png) |
+| **Orientation** — "this screen is not a dashboard"; it ranks what to look at and links into rooms. | **The Focus, carried** — one `StableNodeKey` with the "carry this focus to" affordances, beside real compiler IR: 64 blocks, 96 edges, **55 dominance frontiers**. | **The decisive artefact** — a Radix `Dialog.Portal` rendering. The same code renders *nothing* through `preact/compat`, and that is why the framework changed. |
+| ![Communities and clones](dashboard-v2/screens/04-architecture-communities-clones.png) | ![The Review room](dashboard-v2/screens/05-review-room-contract.png) | ![Proof: published limits](dashboard-v2/screens/06-proof-published-limits.png) |
+| **Architecture** — modularity 0.455, badged **"not Louvain"**, plus 17 exact clone groups and a chord map of duplication. It also admits the exported field is still misnamed. | **Review** — an honest empty state, and the contract it consumes. That contract is `rgctl review export`, submitted separately as sshaaf/rgctl#117. | **Proof** — the limits published beside the wins, which is the point of the surface. |
+| ![Migration order](dashboard-v2/screens/07-migration-order.png) | | |
+| **Migration** — a deterministic schedule from coupling, centrality and blast radius. | | |
+
+What the prototype does **not** show, and why it was retired rather than extended: it has no WASM
+engine, so nothing is driven by a real graph; the `Code` lens reports a *count* of source lines rather
+than source; and `Spine` renders an empty state because the caller/callee index is not in its dataset.
+The maintainer's parking comment on [issue #61](https://github.com/sshaaf/rgctl/issues/61) named the code
+browser as *the* missing piece — so the next step is the real app, not another prototype. See
+[open question 4](#open-questions).
 
 ### Consequences
 
