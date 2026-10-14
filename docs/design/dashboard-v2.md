@@ -317,13 +317,49 @@ _Update on every phase PR._
 | Audit defect fixes — favicon (D8) | prereq | **not started** | Missing icon → 404 per load |
 | `dashboard/dist` regen | prereq | **done** | Rebuilt with `wasm-pack` and landed in `8f09655` (sshaaf/rgctl#110). Until then the source fixes were invisible in a built binary, because `dashboard/dist` is compile-time embedded — see [Build hazards](#two-build-hazards-to-fix-while-adding-the-size-gate). |
 | `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; read-only, composed, tested (`tests/review_paths_integration.rs`) |
-| v2 shell + flag | 1 | **next** | Unblocked — React decided, stack settled by spike; mock prototyped |
+| v2 app + shell | 1 | **in progress** | React app in `dashboard/src/v2`, own Vite config, own `dist-v2`; Instrument, Orientation, Rooms, Lens control, and the Focus in the URL. Selected with `RGCTL_DASHBOARD_V2=1` — one flag, see below. |
+| v2 Spine lens (code browser) | 1 | **in progress** | Source for the focused symbol beside its CFG, bound both ways; dominance-depth layout; lightweight highlighting. Not syntax-complete and no IDE affordances, deliberately. |
+| v2 test harness + gates | 1 | **done** | Own Vitest config (React, jsdom) and `./scripts/test-dashboard.sh`, which runs every dashboard gate and the offline check as a set. 21 v1 tests + 11 v2 tests. |
+| v2 bundle-size gate | 1 | **done** | In `scripts/build-dashboard.sh`. Measured: **v1 321 KiB** gzipped, **v2 136 KiB** — v2 ships less than half despite adding React, because it drops CodeMirror and Sigma. |
+| v2 rooms | 2–6 | **not started** | Rooms render an explicit "not built yet, change N" state naming what fills them. |
 | Review Room | 2 | **not started** | |
 | Security Room | 3 | **not started** | |
 | Architecture City | 4 | **not started** | |
 | Proof surface | 5 | **not started** | |
 | Migration Room restyle | 6 | **not started** | |
 | `BlastSliceTrace` export | 7 | **not started** | JSON envelope corruption repro confirmed. Previously also blocked on two `rgctl slice` defects, now **fixed and under review** — issues sshaaf/rgctl#113/#114, PRs #115/#116. See `audit/slice-addressing.md`. |
+
+### How to reach v2
+
+```bash
+npm --prefix dashboard run build:v2        # or ./scripts/build-dashboard.sh for both bundles
+rgctl -r <repo> discover . --with-dashboard
+RGCTL_DASHBOARD_V2=1 rgctl -r <repo> serve --open
+```
+
+`RGCTL_DASHBOARD_V2=1` selects the v2 bundle when `discover` extracts the dashboard into `.rgctl/dashboard/`,
+and `serve` then serves whatever was extracted. It is an **environment variable rather than a flag on
+purpose**: there is one user-facing flag (`--with-dashboard`), and this switch is a development affordance,
+not a feature — "run the other dashboard" is not a promise worth making to users. It disappears when v2 is
+what that flag serves and v1 is retired.
+
+If v2 is selected and its bundle is unavailable, extraction **fails and says so** instead of falling back to
+v1. A silent fallback would serve the old dashboard to someone who believes they are looking at the new one.
+
+### Running the dashboard gates
+
+```bash
+./scripts/test-dashboard.sh
+```
+
+Runs the crate's unit tests, the integration gates, both JS suites, and an offline check over both bundles.
+It exists because the gates were previously run one at a time, which in practice meant they were run when
+someone remembered.
+
+The offline check looks for **resource** references — `src=`, `href=`, CSS `url(...)` — rather than grepping
+for `http`, because library strings legitimately contain URLs (React's own error messages are
+`https://react.dev/errors/N`) and a naive grep fails on those while saying nothing about whether the bundle
+fetches anything.
 
 ---
 
