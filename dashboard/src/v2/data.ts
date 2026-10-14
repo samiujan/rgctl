@@ -56,8 +56,6 @@ export interface FunctionEntry {
   function_id: string;
   name: string;
   file_path?: string | null;
-  /** Not exported yet — see the note in `focus.ts`. `null` is a real state, not an oversight. */
-  stable_key?: string | null;
   block_count?: number;
   cfg_edge_count?: number;
   source_lines?: number;

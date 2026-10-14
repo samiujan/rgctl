@@ -7,7 +7,7 @@ import { Chip, Panel, Unavailable } from "./shell";
 import { Spine } from "./rooms/Spine";
 import { Placeholder } from "./rooms/Placeholder";
 import { loadFunctions, loadManifest, type FunctionEntry } from "./data";
-import { LENSES, ROOMS, describeKey, isLens, isRoom, keyOf, resolveFocus, type LensId, type RoomId } from "./focus";
+import { LENSES, ROOMS, isLens, isRoom, keyOf, resolveFocus, type LensId, type RoomId } from "./focus";
 import { useState } from "react";
 
 const roomApi = getRouteApi("/$roomId");
@@ -58,7 +58,7 @@ export function App() {
     <div className="flex h-full flex-col overflow-hidden">
       <Instrument
         manifest={manifest.data ?? null}
-        focusLabel={entry ? describeKey(focus!) : null}
+        focusLabel={entry?.name ?? null}
         onClearFocus={() => setFocus(null)}
       />
 
@@ -211,7 +211,7 @@ function RepoRoom({
                   key={f.function_id}
                   type="button"
                   onClick={() => onPick(f)}
-                  title={f.stable_key ? f.stable_key : keyOf(f)}
+                  title={keyOf(f)}
                   className="rounded border border-white/12 bg-white/[0.03] px-2 py-0.5 font-mono text-[11px] text-zinc-300 hover:border-sky-400/40 hover:text-sky-200"
                 >
                   {f.name}

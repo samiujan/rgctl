@@ -2,103 +2,61 @@
  * The Focus — the one model that ties the surfaces together.
  *
  * A single portable identifier for "the thing you are currently looking at", carried across rooms and
- * lenses and serialized into the URL. It is deliberately *not* a per-view selection: that is what makes
- * rooms feel disconnected, and it is the failure mode the maintainer parked issue #61 over.
+ * lenses and serialized into the URL. Deliberately *not* a per-view selection: that is what makes rooms
+ * feel disconnected, and it is the failure mode the maintainer parked issue #61 over.
  *
- * The value exported today is the analysis storage key, `file \x1f name \x1f code_hash`
- * (`crates/rgctl-analysis/src/storage.rs:24`). Its own doc comment calls it a **stable cache key** — its
- * job is cache invalidation, so it *must* change whenever the function changes.
+ * ## Why `function_id` is the identity
  *
- * That makes it a poor identity for a shareable link, and this is a real finding rather than a caveat:
+ * It is the node's deterministic id: `UUIDv5(NAMESPACE_RGCTL, BLAKE3(path ‖ 0xff ‖ name ‖ 0xff ‖
+ * node_type)[..8])`, assigned in `with_file_path` (`crates/rgctl-graph/src/schema.rs:444`) via
+ * `deterministic_node_id`. So it *is* the graph's `StableNodeKey`, in UUID form, and it has exactly the
+ * semantics a shareable Focus needs. Measured on a three-function repo:
  *
- *   - renamed     -> the name is in the key, so it changes
- *   - moved       -> the path is in the key, so it changes
- *   - **edited**  -> `code_hash` is a hash of the body, so it changes
+ *   | change                  | `function_id` | analysis `stable_key` |
+ *   |-------------------------|---------------|-----------------------|
+ *   | edit the function body  | unchanged     | changed               |
+ *   | rename the function     | changed       | changed               |
+ *   | re-index, no change     | unchanged     | unchanged             |
  *
- * It survives re-indexing of *unchanged* code and little else. A review link therefore expires the moment
- * anyone touches the function, which is precisely when a review link is most wanted.
+ * The alternative was the analysis storage key, `file \x1f name \x1f code_hash`
+ * (`crates/rgctl-analysis/src/storage.rs:24`), whose own doc comment calls it a *stable cache key*. It is
+ * built for cache invalidation, so it **must** change whenever the content changes — and it did. A Focus
+ * built on it would expire the moment anyone touched the function, which is exactly when a review link is
+ * most wanted.
  *
- * A better identity exists in the engine: `rgctl_graph::StableNodeKey` is `BLAKE3(path, name)` truncated
- * to 64 bits (`crates/rgctl-graph/src/stable_key.rs:29`), and it is what `snapshot_diff` already uses to
- * match nodes across snapshots. It survives edits, which is the property a Focus needs, and it still
- * breaks on rename.
+ * An earlier version of this file namespaced the two (`sk:` / `fn:`) so their meanings could not be
+ * confused while both were in play. That was unnecessary ceremony: they are the same identity expressed
+ * twice, one of them worse, and the worse one is no longer exported.
  *
- * Choosing between them is open — see `docs/design/dashboard-v2.md`. Until it is settled, `sk:` carries
- * whatever the bundle exports, and the shell renders an unresolved Focus explicitly rather than silently
- * showing no subject.
+ * ## What it does not survive
+ *
+ * A **rename**. The name is part of the hash, so renaming a symbol produces a different id and an old link
+ * stops resolving. Nothing in the engine survives a rename without a resolution step, and resolution needs
+ * a baseline snapshot — which a pasted URL does not have. A Focus that no longer resolves therefore renders
+ * an explicit stale state that says why, rather than a silently empty subject.
  */
 
 export type Focus = string;
 
-export const UNITS = "\u001f";
-
 /**
- * Focus keys are namespaced, because two identifiers are in circulation and they are not interchangeable.
+ * A Focus is a node UUID.
  *
- * - `fn:<function_id>` — the UUID the indexes are keyed by today.
- * - `sk:<stable_key>` — the engine's `path \x1f name` stable key, used once the export carries it.
- *
- * The prefix exists so the two can never be confused: `sk:` keys survive a re-index, `fn:` keys are the
- * current bridge, and a URL written with one still says which it is a year later. Silently treating them
- * as one string would mean a stored link changing meaning the day the export changed shape.
- *
- * **`fn:` is temporary and has an expiry.** It exists only because the exported indexes do not yet carry
- * `stable_key`; once they do, `sk:` is what the UI emits and `fn:` is supported solely to keep links
- * written in the meantime working. The removal condition is not a date, it is a state:
- *
- *   delete `FN_PREFIX` handling once `stable_key` is in every index that feeds a Focus — `cfg_index.json`
- *   and `slice_index.json` — because at that point no reader can produce an `fn:` link and the branch is
- *   dead code pretending to be compatibility.
- *
- * Left unwritten, a compatibility shim outlives the thing it was compatible with. That is how a
- * two-line bridge becomes a permanent second identifier with its own bugs.
+ * Validated rather than accepted blindly: a malformed URL should produce "no subject", not a subject that
+ * looks real and resolves to nothing.
  */
-export const FN_PREFIX = "fn:";
-export const SK_PREFIX = "sk:";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Focus key for a function entry, preferring the stable key when the export provides one. */
-export function keyOf(entry: { stable_key?: string | null; function_id: string }): Focus {
-  return entry.stable_key ? SK_PREFIX + entry.stable_key : FN_PREFIX + entry.function_id;
+export function keyOf(entry: { function_id: string }): Focus {
+  return entry.function_id;
 }
 
-export type FocusKind = "stable" | "function-id";
-
-export function decodeFocus(key: Focus): { kind: FocusKind; value: string } | null {
-  if (key.startsWith(SK_PREFIX)) return { kind: "stable", value: key.slice(SK_PREFIX.length) };
-  if (key.startsWith(FN_PREFIX)) return { kind: "function-id", value: key.slice(FN_PREFIX.length) };
-  return null;
-}
-
-/** Resolve a Focus against the loaded index. */
-export function resolveFocus<T extends { stable_key?: string | null; function_id: string }>(
-  key: Focus,
-  entries: T[],
-): T | null {
-  const decoded = decodeFocus(key);
-  if (!decoded) return null;
-  return decoded.kind === "stable"
-    ? (entries.find((e) => e.stable_key === decoded.value) ?? null)
-    : (entries.find((e) => e.function_id === decoded.value) ?? null);
-}
-
-/** Human-readable label for a Focus: the symbol name when we can read one, else the raw value. */
-export function describeKey(key: Focus): string {
-  const decoded = decodeFocus(key);
-  if (!decoded) return key;
-  if (decoded.kind === "stable") {
-    const parts = decoded.value.split(UNITS);
-    return parts[1] ?? decoded.value;
-  }
-  return decoded.value.slice(0, 8);
-}
-
-/** Accept only a well-formed key, so a malformed URL cannot put the shell into a broken subject state. */
 export function parseFocus(raw: unknown): Focus | null {
-  if (typeof raw !== "string" || raw.length === 0) return null;
-  const decoded = decodeFocus(raw);
-  if (!decoded || decoded.value.length === 0) return null;
-  if (decoded.kind === "stable" && decoded.value.split(UNITS).length < 2) return null;
-  return raw;
+  return typeof raw === "string" && UUID.test(raw) ? raw : null;
+}
+
+/** Resolve a Focus against the loaded index. `null` means it no longer resolves — a real state. */
+export function resolveFocus<T extends { function_id: string }>(key: Focus, entries: T[]): T | null {
+  return entries.find((e) => e.function_id === key) ?? null;
 }
 
 export const ROOMS = [
