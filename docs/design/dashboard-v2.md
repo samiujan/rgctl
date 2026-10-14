@@ -281,7 +281,7 @@ _Update on every phase PR._
 | Audit defect fixes — path/naming (D9, D10) | prereq | **done** | Path disambiguation, label propagation naming |
 | Audit defect fixes — tab bar (D6) | prereq | **not started** | IA change; belongs with the v2 shell |
 | Audit defect fixes — favicon (D8) | prereq | **not started** | Missing icon → 404 per load |
-| `dashboard/dist` regen | prereq | **blocked** | Source fixes are not in the embedded bundle until `dist` is rebuilt with `wasm-pack` |
+| `dashboard/dist` regen | prereq | **done** | Rebuilt with `wasm-pack` and landed in `8f09655` (sshaaf/rgctl#110). Until then the source fixes were invisible in a built binary, because `dashboard/dist` is compile-time embedded — see [Build hazards](#two-build-hazards-to-fix-while-adding-the-size-gate). |
 | `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; read-only, composed, tested (`tests/review_paths_integration.rs`) |
 | v2 shell + flag | 1 | **next** | Unblocked — React decided, stack settled by spike; mock prototyped |
 | Review Room | 2 | **not started** | |
@@ -289,7 +289,7 @@ _Update on every phase PR._
 | Architecture City | 4 | **not started** | |
 | Proof surface | 5 | **not started** | |
 | Migration Room restyle | 6 | **not started** | |
-| `BlastSliceTrace` export | 7 | **not started** | JSON envelope corruption repro confirmed |
+| `BlastSliceTrace` export | 7 | **not started** | JSON envelope corruption repro confirmed. Previously also blocked on two `rgctl slice` defects, now **fixed and under review** — issues sshaaf/rgctl#113/#114, PRs #115/#116. See `audit/slice-addressing.md`. |
 
 ---
 
@@ -298,4 +298,13 @@ _Update on every phase PR._
 1. ~~**Preact → React.**~~ **Decided: migrate to React** — see [Decision: migrate to React](#decision-migrate-to-react). Settled by measurement, not preference: the compat shim failed on Radix portals and `wouter`, and React costs ~63 KB gzipped against a 1.7 MB bundle.
 2. **`rgctl review` command surface.** Change 0 defines `review export`. Does `review` also gain a `--since` range, or does it always diff against the working tree?
 3. **Where does "coverage" come from?** The Instrument bar promises `coverage ●●●○○`. That must be derived from real per-language support tiers ([tier-1-language-support.md](../tier-1-language-support.md)), not asserted.
+4. **Nothing in the change sequence is the code browser.** The maintainer's parking comment on
+   [issue #61](https://github.com/sshaaf/rgctl/issues/61) names it as *the* missing piece — "CFG, slice,
+   blast, and dataflow only make sense next to the actual source" — and the sequence has no entry for
+   it. Change 1 is the shell, changes 2–6 are rooms, and none of them is source rendering. Worse, the
+   prototype does not stand in for it: the `Code` lens shows a **count of source lines**, not source,
+   and `Spine` (the default lens) renders an empty state saying the caller/callee index is absent. So
+   the one requirement the maintainer singled out is the one this design cannot currently demonstrate.
+   This needs a decision before change 1 is scoped: fold source rendering into change 1, or give it its
+   own change ahead of the rooms.
 4. **Proof surface honesty.** Change 5 publishes a speed matrix and correctness scorecard. Publishing only wins would violate rule 5; it must publish the limits too (intra-procedural taint, `Calls`-only blast traversal, approximation regimes).
