@@ -85,6 +85,19 @@ export interface CfgBlock {
   stmts_total?: number;
 }
 
+export interface CfgEdge {
+  from: number;
+  to: number;
+  edge_type: string;
+}
+
+/**
+ * Read off a real bundle, not assumed. The first draft of this interface guessed `df`; the export calls it
+ * `dominance_frontiers`, and it also carries `edges`, which the guess omitted entirely.
+ *
+ * `idom` and `dominance_frontiers` are indexed by **block id**, and block ids are sequential from 0, so
+ * `idom[b.id]` is the immediate dominator of that block. That contract is what the layout depends on.
+ */
 export interface CfgDetail {
   function_id: string;
   name: string;
@@ -92,8 +105,14 @@ export interface CfgDetail {
   entry: number;
   exits: number[];
   blocks: CfgBlock[];
+  /**
+   * Optional even though the current schema always writes it: a bundle produced by an older version would
+   * otherwise crash the room, and the design's rule is that an absence is *stated*, not thrown. The graph
+   * renders the blocks without edges and says so.
+   */
+  edges?: CfgEdge[];
   idom?: number[];
-  df?: number[][];
+  dominance_frontiers?: number[][];
 }
 
 export async function loadManifest(): Promise<Manifest | null> {
