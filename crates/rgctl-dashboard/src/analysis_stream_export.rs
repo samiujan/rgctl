@@ -278,11 +278,16 @@ fn export_one(
     let function_id = entry.function_id.to_string();
     let pdg_nodes = pdg_export.nodes.len();
     let block_count = cfg.blocks.len();
+    // The stable key is already here: `parse_stable_key(&entry.stable_key)` above splits it for the
+    // name and path fallbacks. Exported verbatim so the dashboard carries the same identity the engine
+    // does, rather than a UUID its indexes happen to be keyed by.
+    let stable_key = Some(entry.stable_key.clone()).filter(|k| !k.is_empty());
     Some(ExportWork {
         slice_entry: SliceFunctionEntry {
             function_id: function_id.clone(),
             name: name.clone(),
             file_path: file_path.clone(),
+            stable_key: stable_key.clone(),
             source_lines: total_lines,
             pdg_nodes,
         },
@@ -290,6 +295,7 @@ fn export_one(
             function_id: function_id.clone(),
             name: name.clone(),
             file_path: file_path.clone(),
+            stable_key,
             block_count,
             cfg_edge_count: cfg.edges.len(),
         },

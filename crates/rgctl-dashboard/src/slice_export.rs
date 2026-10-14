@@ -23,6 +23,9 @@ pub struct SliceFunctionEntry {
     pub function_id: String,
     pub name: String,
     pub file_path: Option<String>,
+    /// See `CfgFunctionEntry::stable_key`. `#[serde(default)]` keeps pre-existing indexes loadable.
+    #[serde(default)]
+    pub stable_key: Option<String>,
     pub source_lines: usize,
     pub pdg_nodes: usize,
 }
