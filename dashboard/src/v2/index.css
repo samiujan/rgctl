@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+/* Name the real sources so the shipped stylesheet is a function of the code. Tailwind's automatic
+   detection scans everything it can reach and honours .gitignore, so an ignored-then-unignored data
+   file can otherwise emit CSS — measured on the retired prototype as 25.89 -> 27.12 KB. */
+@source "../v2";
+@source "../../index.v2.html";
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: #0b0d10;
+  color: #e6e8eb;
+  font: 13px/1.45 ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
+}
+* { scrollbar-width: thin; scrollbar-color: #2a2f36 transparent; }
