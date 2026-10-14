@@ -5,13 +5,27 @@
  * lenses and serialized into the URL. It is deliberately *not* a per-view selection: that is what makes
  * rooms feel disconnected, and it is the failure mode the maintainer parked issue #61 over.
  *
- * The value is the engine's stable key (the graph's `path \x1f name`), so it does not depend on row
- * order or on a function UUID that a re-index may reassign.
+ * The value exported today is the analysis storage key, `file \x1f name \x1f code_hash`
+ * (`crates/rgctl-analysis/src/storage.rs:24`). Its own doc comment calls it a **stable cache key** — its
+ * job is cache invalidation, so it *must* change whenever the function changes.
  *
- * It does **not** survive a rename — the key contains the name, so renaming a symbol changes it. The v2
- * design doc claims otherwise ("rename-surviving"); that claim is wrong and is corrected in
- * `docs/design/dashboard-v2.md`. What the key does survive is re-indexing, which is the property the URL
- * actually needs.
+ * That makes it a poor identity for a shareable link, and this is a real finding rather than a caveat:
+ *
+ *   - renamed     -> the name is in the key, so it changes
+ *   - moved       -> the path is in the key, so it changes
+ *   - **edited**  -> `code_hash` is a hash of the body, so it changes
+ *
+ * It survives re-indexing of *unchanged* code and little else. A review link therefore expires the moment
+ * anyone touches the function, which is precisely when a review link is most wanted.
+ *
+ * A better identity exists in the engine: `rgctl_graph::StableNodeKey` is `BLAKE3(path, name)` truncated
+ * to 64 bits (`crates/rgctl-graph/src/stable_key.rs:29`), and it is what `snapshot_diff` already uses to
+ * match nodes across snapshots. It survives edits, which is the property a Focus needs, and it still
+ * breaks on rename.
+ *
+ * Choosing between them is open — see `docs/design/dashboard-v2.md`. Until it is settled, `sk:` carries
+ * whatever the bundle exports, and the shell renders an unresolved Focus explicitly rather than silently
+ * showing no subject.
  */
 
 export type Focus = string;

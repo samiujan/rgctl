@@ -39,6 +39,13 @@ pub struct CfgFunctionEntry {
     pub function_id: String,
     pub name: String,
     pub file_path: Option<String>,
+    /// The engine's stable key (`path \x1f name`), so the dashboard can address a function by something
+    /// other than its UUID.
+    ///
+    /// Serialised as `Option` with a default so indexes written before this field existed still
+    /// deserialise — the alternative is a bundle that fails to load rather than one missing a column.
+    #[serde(default)]
+    pub stable_key: Option<String>,
     pub block_count: usize,
     pub cfg_edge_count: usize,
 }
