@@ -100,6 +100,12 @@ const ws = await connect(tab);
 const send = makeSend(ws);
 
 try {
+  // Chrome runs here in single-window `--app=` mode, so a newly opened tab can land in the
+  // background — and a background tab does not paint, so `Page.captureScreenshot` waits forever and
+  // the run dies on the 30s timeout. That is the same class of bug as the `/json/new` one above: the
+  // failure looks like "the page is broken" when the page is fine. Foreground it before capturing.
+  await send("Page.bringToFront");
+
   await send("Emulation.setDeviceMetricsOverride", {
     width: Number(flags.w ?? 1440),
     height: Number(flags.h ?? 900),
