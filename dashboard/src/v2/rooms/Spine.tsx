@@ -2,15 +2,19 @@
  * The Spine lens — source for the focused symbol, beside its control-flow graph.
  *
  * This is the piece the maintainer named as missing on issue #61: "CFG, slice, blast, and dataflow only
- * make sense next to the actual source". The graph and the code are two views of one Focus, so the
- * binding between them is by line number in both directions: selecting a block highlights the lines it
- * covers, and the source shows which blocks cover the selection.
+ * make sense next to the actual source". The graph and the code are two views of one Focus, and the
+ * binding runs **both ways**:
+ *
+ *   select a block  -> its source lines highlight
+ *   click a line    -> the block covering it is selected
+ *
+ * Both directions matter. One-way binding means the graph is authoritative and the code is a display;
+ * two-way means either pane can be the one you are reading, which is how reviewing actually goes.
  *
  * Scope discipline: no file tree, no editing, no go-to-definition. This is a view of the Focus, not an
- * IDE, and the boundary is what keeps the change reviewable.
+ * IDE, and that boundary is what keeps the change reviewable.
  */
-import { useEffect, useState } from "react";
-import { Chip, Command, Panel, Stat, Unavailable } from "../shell";
+import { useEffect, useMemo, useState } from "react";
 import {
   excerpt,
   loadCfgDetail,
@@ -21,11 +25,26 @@ import {
   type CfgDetail,
   type FunctionEntry,
 } from "../data";
+import { CfgGraph, hasLines, lineLabel } from "./CfgGraph";
+import { highlightLine, TOKEN_CLASS } from "../highlight";
+import { Chip, Command, Panel, Stat, Unavailable } from "../shell";
 
 type SourceState =
   | { kind: "loading" }
   | { kind: "ready"; lines: { line: number; text: string }[] }
   | { kind: "absent"; reason: string };
+
+/** Language id for highlighting, from the file extension. */
+function languageFor(filePath: string | null | undefined): string {
+  const ext = filePath?.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    ts: "typescript", tsx: "typescript", mts: "typescript", cts: "typescript",
+    js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript",
+    rs: "rust", py: "python", go: "go", java: "java", cs: "csharp",
+    cpp: "cpp", cc: "cpp", hpp: "cpp", c: "c", h: "c", php: "php", rb: "ruby",
+  };
+  return map[ext] ?? "typescript";
+}
 
 export function Spine({ entry }: { entry: FunctionEntry }) {
   const [cfg, setCfg] = useState<CfgDetail | null>(null);
@@ -70,26 +89,64 @@ export function Spine({ entry }: { entry: FunctionEntry }) {
     };
   }, [entry.function_id, entry.file_path]);
 
-  const selected = selectedBlock === null ? null : (cfg?.blocks.find((b) => b.id === selectedBlock) ?? null);
+  /**
+   * Line -> block, the reverse of the block -> lines binding.
+   *
+   * When several blocks cover a line (nested or synthetic spans), the *smallest* span wins, because that
+   * is the block the line most specifically belongs to. Blocks with no source lines are excluded outright
+   * rather than matching line 0 by accident.
+   */
+  const blockForLine = useMemo(() => {
+    const map = new Map<number, CfgBlock>();
+    for (const b of cfg?.blocks ?? []) {
+      if (!hasLines(b)) continue;
+      for (let line = b.start_line; line <= b.end_line; line++) {
+        const existing = map.get(line);
+        const span = b.end_line - b.start_line;
+        if (!existing || span < existing.end_line - existing.start_line) map.set(line, b);
+      }
+    }
+    return map;
+  }, [cfg]);
+
+  /** The blocks covering the selected block's lines, so the code pane can show what the graph means. */
+  const highlighted = useMemo(() => {
+    const b = selectedBlock === null ? null : (cfg?.blocks.find((x) => x.id === selectedBlock) ?? null);
+    const lines = new Set<number>();
+    if (b && hasLines(b)) for (let line = b.start_line; line <= b.end_line; line++) lines.add(line);
+    return { block: b, lines };
+  }, [selectedBlock, cfg]);
+
+  const language = languageFor(entry.file_path);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="File" value={<span className="font-mono text-[12px]">{entry.file_path?.split("/").pop() ?? "—"}</span>} hint={entry.file_path ? relative(entry.file_path, prefix) : undefined} />
-        <Stat label="Blocks" value={cfg?.blocks.length ?? "—"} />
-        <Stat label="CFG edges" value={entry.cfg_edge_count ?? "—"} />
+        <Stat
+          label="File"
+          value={<span className="font-mono text-[12px]">{entry.file_path?.split("/").pop() ?? "—"}</span>}
+          hint={entry.file_path ? relative(entry.file_path, prefix) : undefined}
+        />
+        <Stat label="Blocks" value={cfg?.blocks.length ?? "—"} hint={cfg ? `${cfg.edges?.length ?? 0} edges` : undefined} />
         <Stat label="PDG nodes" value={entry.pdg_nodes ?? "—"} />
+        <Stat
+          label="Dominance frontier"
+          value={cfg?.dominance_frontiers?.filter((l) => l?.length).length ?? "—"}
+          hint="blocks where a φ belongs"
+        />
       </div>
 
       <div className="flex min-h-0 flex-1 gap-3">
-        <div className="flex min-w-0 flex-[3] flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           <Panel
             title="Source"
             subtitle={entry.file_path ? relative(entry.file_path, prefix) : undefined}
             right={
-              selected ? (
+              highlighted.block ? (
                 <Chip tone="blue">
-                  {hasLines(selected) ? `lines ${selected.start_line}\u2013${selected.end_line}` : "block has no source lines"}
+                  {hasLines(highlighted.block)
+                    ? `B${highlighted.block.id} · lines ${highlighted.block.start_line}–${highlighted.block.end_line}`
+                    : `B${highlighted.block.id} · no source lines`}
                 </Chip>
               ) : undefined
             }
@@ -97,17 +154,36 @@ export function Spine({ entry }: { entry: FunctionEntry }) {
             {source.kind === "loading" && <p className="text-[11px] text-zinc-500">loading…</p>}
             {source.kind === "absent" && <Unavailable what="Source text is not available" why={source.reason} />}
             {source.kind === "ready" && (
-              <div className="max-h-[60vh] overflow-auto">
-                <table className="w-full border-collapse font-mono text-[11px] leading-[1.5]">
+              <div className="max-h-[56vh] overflow-auto">
+                <table className="w-full border-collapse font-mono text-[11px] leading-[1.55]">
                   <tbody>
                     {source.lines.map(({ line, text }) => {
-                      const inBlock = selected !== null && hasLines(selected) &&
-                        line >= selected.start_line && line <= selected.end_line;
+                      const owner = blockForLine.get(line);
+                      const inSelection = highlighted.lines.has(line);
                       return (
-                        <tr key={line} className={inBlock ? "bg-sky-500/10" : undefined}>
-                          <td className="w-12 select-none pr-3 text-right align-top text-zinc-600">{line}</td>
-                          <td className="whitespace-pre-wrap break-all align-top text-zinc-300">
-                            {text || "\u00a0"}
+                        <tr
+                          key={line}
+                          onClick={() => owner && setSelectedBlock(owner.id === selectedBlock ? null : owner.id)}
+                          title={owner ? `block B${owner.id} (${lineLabel(owner)})` : undefined}
+                          className={
+                            inSelection
+                              ? "bg-sky-500/15"
+                              : owner
+                                ? "cursor-pointer hover:bg-white/[0.04]"
+                                : undefined
+                          }
+                        >
+                          <td className="w-14 select-none pr-3 text-right align-top text-zinc-600">
+                            {line}
+                            {inSelection && <span className="ml-1 text-sky-400">▍</span>}
+                          </td>
+                          <td className="whitespace-pre-wrap break-all align-top">
+                            {highlightLine(text, language).map((tok, i) => (
+                              <span key={i} className={TOKEN_CLASS[tok.kind]}>
+                                {tok.text}
+                              </span>
+                            ))}
+                            {text === "" && "\u00a0"}
                           </td>
                         </tr>
                       );
@@ -119,58 +195,51 @@ export function Spine({ entry }: { entry: FunctionEntry }) {
           </Panel>
         </div>
 
-        <div className="flex min-w-0 flex-[2] flex-col">
+        {/* Equal width, not source-heavy: a CFG is wide and the source column is text that wraps. At 3:2 the
+            graph pane was too narrow to lay out even a modest function, which made the graph the pane you
+            scrolled rather than the pane you read. */}
+        <div className="flex min-w-0 flex-1 flex-col">
           <Panel
             title="Control flow"
-            subtitle="select a block to highlight the lines it covers"
-            right={cfg ? <Chip tone="green">rendering</Chip> : undefined}
+            subtitle={selectedBlock === null ? "hover a block for its dominator chain; click to select" : "selected — click again to clear"}
+            right={cfg ? <Chip tone="green">{cfg.blocks.length} blocks</Chip> : undefined}
           >
             {!cfg && <p className="text-[11px] text-zinc-500">loading…</p>}
-            {cfg && (
-              <div className="max-h-[60vh] space-y-0.5 overflow-auto">
-                {cfg.blocks.map((b) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => setSelectedBlock(b.id === selectedBlock ? null : b.id)}
-                    className={`flex w-full items-center gap-2 rounded px-1.5 py-0.5 text-left font-mono text-[11px] ${
-                      b.id === selectedBlock ? "bg-sky-500/15 text-sky-100" : "text-zinc-300 hover:bg-white/[0.04]"
-                    }`}
+            {cfg && <CfgGraph cfg={cfg} selected={selectedBlock} onSelect={setSelectedBlock} />}
+          </Panel>
+
+          {highlighted.block && (
+            <div className="mt-3 rounded-lg border border-white/8 bg-white/[0.02] p-3">
+              <div className="flex items-center gap-2">
+                <Chip tone="blue">B{highlighted.block.id}</Chip>
+                <span className="text-[11px] text-zinc-300">{lineLabel(highlighted.block)}</span>
+                <span className="text-[10px] text-zinc-500">
+                  {highlighted.block.stmts_total ?? highlighted.block.statements.length} statement(s) in this block
+                </span>
+                {cfg?.exits.includes(highlighted.block.id) && <Chip tone="blue">exit</Chip>}
+              </div>
+              <div className="mt-2 space-y-0.5">
+                {highlighted.block.statements.length === 0 && (
+                  <span className="text-[11px] text-zinc-600">
+                    no statements recorded for this block
+                    {!hasLines(highlighted.block) && " — it covers no source lines (a synthetic prologue or epilogue block)"}
+                  </span>
+                )}
+                {highlighted.block.statements.map((s, i) => (
+                  <pre
+                    key={i}
+                    className="overflow-x-auto rounded border border-white/8 bg-black/40 px-2 py-1 font-mono text-[11px] text-emerald-200/90"
                   >
-                    <span className="w-8 shrink-0 text-zinc-500">B{b.id}</span>
-                    <span className="w-20 shrink-0 text-zinc-400">{lineLabel(b)}</span>
-                    <span className="w-14 shrink-0 text-zinc-600">{b.stmts_total ?? b.statements.length} stmt</span>
-                    {b.id === cfg.entry && <Chip tone="green">entry</Chip>}
-                    {cfg.exits.includes(b.id) && <Chip tone="blue">exit</Chip>}
-                  </button>
+                    {s}
+                  </pre>
                 ))}
               </div>
-            )}
-          </Panel>
-          <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
-            Source and graph are bound by line number, both directions, from a single Focus. The dominance
-            layout that made this readable in the prototype is not ported yet.
-          </p>
+            </div>
+          )}
+
           <Command>rgctl -r &lt;repo&gt; -f json inspect {entry.name} cfg</Command>
         </div>
       </div>
     </div>
   );
-}
-
-/**
- * A CFG block either covers source lines or it does not.
- *
- * The synthetic prologue and epilogue blocks carry `start_line: 0`, which is not line zero — it is the
- * absence of a line. Rendering it as "L0" invites the reader to believe there is a line 0, and it is the
- * same `—`-versus-`0` confusion fixed as defect D4 in the v1 dashboard. Roughly 59% of blocks in a real
- * bundle carry line information; the rest are real blocks with no source to point at.
- */
-function hasLines(b: CfgBlock): boolean {
-  return b.start_line > 0 || b.end_line > 0;
-}
-
-function lineLabel(b: CfgBlock): string {
-  if (!hasLines(b)) return "—";
-  return b.start_line === b.end_line ? `L${b.start_line}` : `L${b.start_line}–${b.end_line}`;
 }

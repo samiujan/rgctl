@@ -58,6 +58,18 @@ const CFG = {
       { id: 2, label: "B2", start_line: 0, end_line: 0, statements: [], stmts_total: 0 },
       { id: 3, label: "B3", start_line: 6, end_line: 7, statements: ["return verify(token)"], stmts_total: 1 },
     ],
+    // Field names taken from a real `cfg/<id>.json`, not guessed. The first version of this fixture omitted
+    // `edges` entirely and named the frontier `df` — the export calls it `dominance_frontiers` — which made
+    // the graph throw and unmount the whole tree, taking three unrelated tests with it.
+    edges: [
+      { from: 0, to: 1, edge_type: "next" },
+      { from: 1, to: 2, edge_type: "if_true" },
+      { from: 1, to: 3, edge_type: "if_false" },
+      { from: 3, to: 2, edge_type: "return" },
+    ],
+    // Indexed by block id, which is what the layout walks.
+    idom: [0, 0, 1, 1],
+    dominance_frontiers: [[], [2], [], []],
   },
 };
 
