@@ -1,4 +1,11 @@
-import { createRootRoute, createRoute, createRouter, redirect, Outlet } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  redirect,
+  Outlet,
+  type RouterHistory,
+} from "@tanstack/react-router";
 import { isLens, isRoom, parseFocus } from "./focus";
 import { App } from "./App";
 
@@ -42,7 +49,18 @@ const roomRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([indexRoute, roomRoute]);
 
-export const router = createRouter({ routeTree, defaultPreload: false });
+/**
+ * A factory, so tests can drive the real router with a memory history.
+ *
+ * The alternative — a second route tree written for tests — would be a copy that drifts, and the thing
+ * most worth testing here is precisely the routing contract (`validateSearch` normalising an unknown lens,
+ * room preservation across a lens switch). A test against a copy proves nothing about the original.
+ */
+export function createAppRouter(history?: RouterHistory) {
+  return createRouter({ routeTree, ...(history ? { history } : {}), defaultPreload: false });
+}
+
+export const router = createAppRouter();
 
 declare module "@tanstack/react-router" {
   interface Register {
