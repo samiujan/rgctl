@@ -92,3 +92,10 @@ mock/*.tsbuildinfo
 # generated nor a repo graph — it is hand-built, anonymized fixture source, and
 # the mock does not build without it.
 !mock/src/data/graph.json
+
+# v2 dashboard build output. Deliberately NOT committed, unlike `dashboard/dist`.
+#
+# `dist` is tracked upstream and embedded via include_dir!, which makes a source change invisible in a
+# built binary until someone remembers to rebuild and commit it — and nothing checks. Rather than inherit
+# that for v2, dist-v2 is generated: see the generation note in dashboard/vite.config.v2.ts.
+dashboard/dist-v2/
