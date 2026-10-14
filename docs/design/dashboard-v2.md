@@ -238,7 +238,24 @@ after the framework decision rather than before, which is why the earlier note h
 The bundle is embedded into the binary at compile time via `include_dir` from `dashboard/dist`, and must work with no network.
 
 - **No CDN** — including fonts and icons. Self-host fonts; bundle icons locally. (Icons are currently Bootstrap Icons, already local.)
-- **Self-contained** — `.rgctl/dashboard/` opens from `file://` or a plain static server.
+- **Self-contained** — `.rgctl/dashboard/` needs no network and no backend, but it does need an **origin**:
+  serve it with any static server, or with `rgctl serve`. It does **not** currently work from `file://`, and
+  an earlier version of this line claimed it did.
+
+  The blocker is not routing, which is what it looks like. Vite emits
+  `<script type="module" crossorigin src="./assets/…">`, and Chrome refuses to execute module scripts from a
+  `file://` origin — the origin is opaque, so CORS applies and the script never runs. Measured: the page
+  loads, the script tag is present, `root` stays empty and nothing renders. The module *worker* is the same
+  story (`useEngineWorker.ts` passes `{ type: "module" }`), so the engine would not start either.
+
+  This is true of v1 as well — its built `index.html` carries the same `type="module" crossorigin` — so it
+  is a property of the Vite build, not of v2. `inject_manifest_bootstrap` exists precisely to bootstrap
+  offline, which shows the intent was there; the module boundary is what defeats it.
+
+  Real `file://` support means a non-module build: an IIFE bundle and a classic worker. That costs code
+  splitting (v1's `manualChunks` for sigma, graph-layout and CodeMirror) and changes how the engine worker
+  loads, so it is a build-pipeline change and not a flag. Not attempted: serving the directory is one
+  command, and claiming an offline capability that does not work is worse than not having it.
 - **Bundle size is a gate.** Add a size check to `scripts/build-dashboard.sh` so the embedded-bundle cost is tracked per PR.
 - **No new required backend dependencies.** v2 consumes the existing columnar v2 payload and JSON sidecars.
 
