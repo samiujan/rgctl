@@ -36,6 +36,39 @@ pub fn selected_version() -> BundleVersion {
     version_from_env(std::env::var(DASHBOARD_V2_ENV).ok().as_deref())
 }
 
+/// Short tag for the selected bundle, recorded in the manifest so a later run can tell which one produced
+/// the bundle already on disk.
+pub fn selected_version_tag() -> &'static str {
+    match selected_version() {
+        BundleVersion::V1 => "v1",
+        BundleVersion::V2 => "v2",
+    }
+}
+
+/// Whether the v2 bundle is available to this build (embedded, or on disk in a source checkout).
+pub fn v2_available() -> bool {
+    let disk = dist_dir_for(BundleVersion::V2);
+    disk_dist_complete(&disk) || embedded_dist_complete(&DASHBOARD_DIST_V2)
+}
+
+/// Say so when a bundle was requested that this build cannot serve.
+///
+/// `RGCTL_DASHBOARD_V2=1` against a build with no v2 bundle used to produce **no output at all** — the
+/// variable was read, the embed was empty, and every path downstream either skipped or fell back without a
+/// word. Silence is the worst response to a request you cannot honour: it sends the reader looking at their
+/// repository, their flags and their branch, which is exactly what happened here. Printed before the work
+/// rather than after it, so a long `discover` does not have to finish to report a problem it could have
+/// stated at the start.
+pub fn warn_if_selection_unavailable() {
+    if selected_version() == BundleVersion::V2 && !v2_available() {
+        eprintln!(
+            "warn: {DASHBOARD_V2_ENV} is set but this build has no v2 dashboard bundle.\n  \
+             Build one with: npm --prefix dashboard run build:v2 && cargo build\n  \
+             The v2 bundle is selected at extraction time, so this is stated now rather than at the end."
+        );
+    }
+}
+
 fn dist_dir_for(version: BundleVersion) -> PathBuf {
     let dir = match version {
         BundleVersion::V1 => "dist",
