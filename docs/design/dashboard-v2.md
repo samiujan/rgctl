@@ -70,9 +70,23 @@ LENSES       (shared control, never top-level)
 
 ## The Focus mechanism
 
-The core interaction is a single, portable **Focus**: one `StableNodeKey` — `BLAKE3(path, name, type)` — selected once and carried between rooms.
+The core interaction is a single, portable **Focus**: one stable key derived from the symbol's `(path, name, type)` rather than a database row id, selected once and carried between rooms.
 
-Because the key is derived from stable identity rather than a database row id, it survives renames, moves, and re-indexing. Consequences:
+**What the key survives, precisely.** It survives **re-indexing** — row order and node indices can change
+underneath it and a stored Focus still resolves. That is the property the URL needs, and it is what
+positional node identity cannot do.
+
+It does **not** survive a **rename**, and an earlier draft of this document claimed it did. The key
+contains the name, so renaming a symbol produces a different key and an old link stops resolving; the same
+applies to the engine's `path \x1f name` form. Rename-survival would need either an explicit
+old-key→new-key resolution step — the engine tracks resolved/renamed nodes in `snapshot_diff`, so it is
+achievable — or identity derived from content rather than name. Neither is built, so the shell renders a
+stale Focus as an explicit "does not resolve against this bundle" state rather than pretending.
+
+While the claim went unnoticed it was load-bearing: "carry this symbol to another room" reads differently
+if the carrier expires the first time someone renames a function.
+
+Consequences:
 
 - Select a symbol in **Review**, carry it to **Security** (findings filtered to what that symbol can reach), then to **Architecture** (its coupling), then to **Time** (its drift).
 - The Focus serializes into the URL, so any state is a shareable link: `?focus=<key>&room=security&lens=blast`.
