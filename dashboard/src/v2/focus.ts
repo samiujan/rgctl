@@ -27,6 +27,17 @@ export const UNITS = "\u001f";
  * The prefix exists so the two can never be confused: `sk:` keys survive a re-index, `fn:` keys are the
  * current bridge, and a URL written with one still says which it is a year later. Silently treating them
  * as one string would mean a stored link changing meaning the day the export changed shape.
+ *
+ * **`fn:` is temporary and has an expiry.** It exists only because the exported indexes do not yet carry
+ * `stable_key`; once they do, `sk:` is what the UI emits and `fn:` is supported solely to keep links
+ * written in the meantime working. The removal condition is not a date, it is a state:
+ *
+ *   delete `FN_PREFIX` handling once `stable_key` is in every index that feeds a Focus — `cfg_index.json`
+ *   and `slice_index.json` — because at that point no reader can produce an `fn:` link and the branch is
+ *   dead code pretending to be compatibility.
+ *
+ * Left unwritten, a compatibility shim outlives the thing it was compatible with. That is how a
+ * two-line bridge becomes a permanent second identifier with its own bugs.
  */
 export const FN_PREFIX = "fn:";
 export const SK_PREFIX = "sk:";
