@@ -19,6 +19,7 @@ use super::context::CliContext;
 use super::pr_check::{self, PrCheckArgs};
 use super::pr_check_output::PrCheckResponse;
 use super::review::{ReviewPathsArgs, build_paths_bundle};
+use super::temporal_prep::SyntheticHeadMode;
 use crate::analysis::{VIOLATION_LEDGER_FILE, ViolationLedgerEntry};
 use anyhow::{Context, Result};
 use rgctl_graph::code_graph::GRAPH_DIR;
@@ -169,6 +170,39 @@ pub fn run_export(ctx: &CliContext, args: ReviewExportArgs) -> Result<()> {
         stdout,
     } = args;
 
+    // Invariant 1 of this module: exporting must not mutate what it reports on.
+    //
+    // Synthesizing a "delta head" breaks that invariant twice over. `prepare_artifacts`
+    // reaches `synthesize_head_snapshot`, which seeds `{repo}/.rgctl/` from the base
+    // artifact — copying the *base* snapshot over `graph.snapshot.bin` — and then applies
+    // the git delta in place. Measured consequences (see
+    // `openspec/changes/add-review-workflow-dashboard/tasks.md` §8):
+    //
+    //   * the session index is overwritten (`graph.snapshot.bin`, `graph.json`, `graph.db`,
+    //     `file_hashes.json`) and its analysis artifacts are removed, so the damage
+    //     outlives the command; and
+    //   * the snapshot it hands back as the head is **not** the head. On the two-commit
+    //     fixture a removal-only change leaves the removed call in place while cascade
+    //     re-extraction re-adds edges, so the diff reports additions and never a removal:
+    //     `call_edges: {added: 22, removed: 0}` for a one-line deletion.
+    //
+    // An artifact whose whole purpose is to be a durable, trustworthy record of a change
+    // may not be composed from a head that does not contain the change. `review paths`
+    // keeps the synthesizing default; the artifact producer requires real snapshots.
+    let synthetic_head = SyntheticHeadMode::parse(paths.synthetic_head.as_deref())?;
+    let would_synthesize = paths.head_artifact.is_none()
+        && (!paths.full_snapshots || synthetic_head == SyntheticHeadMode::Worktree);
+    if would_synthesize {
+        anyhow::bail!(
+            "review export needs a real head snapshot, because synthesizing one would \
+             overwrite `.rgctl/` in place and describe a head that does not contain the change \
+             under review (a one-line deletion reports as additions).\n\
+             Provide the head first: `rgctl discover .` in the head tree, or `--head-artifact \
+             <root|snapshot-file>`, and pass `--full-snapshots`.\n\
+             `rgctl review paths` still synthesizes a delta head; only the artifact producer refuses."
+        );
+    }
+
     // `review_paths` is the section that defines the change under review, so a failure
     // here is fatal. Everything else is optional.
     let base_ref = paths.base_ref.clone();
@@ -190,14 +224,16 @@ pub fn run_export(ctx: &CliContext, args: ReviewExportArgs) -> Result<()> {
                 head_ref: head_ref.clone(),
                 strict: false,
                 cascade_depth: 1,
-                full_snapshots: false,
+                // Must match the guard above: `false` here would re-synthesize a head and
+                // overwrite `.rgctl/` a second time, after the paths section already read it.
+                full_snapshots: true,
                 bisect: false,
                 synthetic_head: None,
                 strict_calendar: false,
             };
             // Provenance is a **starting point, not a re-run recipe** (raised in review).
             // The command above omits every flag the evaluation fixed at its own construction site —
-            // `full_snapshots: false`, `bisect: false`, `cascade_depth: 1`, `strict: false` — and those are
+            // `full_snapshots: true`, `bisect: false`, `cascade_depth: 1`, `strict: false` — and those are
             // constants here, not the flags the export was invoked with. So running the printed command does
             // not necessarily reproduce what the `policy` section contains. Stated rather than left implied;
             // whether the evaluation should adopt the export's flags, and the command advertise them, is an

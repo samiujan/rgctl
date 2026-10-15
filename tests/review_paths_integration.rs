@@ -353,12 +353,57 @@ fn review_export_is_read_only_and_leaves_no_ledger() {
     let tmp = setup_rewired_repo();
     let repo = tmp.path();
     let ledger = repo.join(".rgctl/violation_ledger.jsonl");
+    let snapshot = repo.join(".rgctl/graph.snapshot.bin");
     assert!(!ledger.exists(), "precondition: no ledger");
+    assert!(snapshot.is_file(), "precondition: the head snapshot exists");
+    let snapshot_before = fs::read(&snapshot).unwrap();
 
     assert!(run_export(repo, &["--stdout"]).status.success());
     assert!(
         !ledger.exists(),
         "review export must not create or append to the violation ledger"
+    );
+    // The ledger was the only artifact this test used to check. The graph snapshot is the
+    // one the export actually rewrote, because `prepare_artifacts` synthesizes a delta head
+    // in place unless `--full-snapshots` is passed (see §8 of the dashboard-v2 change).
+    assert_eq!(
+        fs::read(&snapshot).unwrap(),
+        snapshot_before,
+        "review export rewrote .rgctl/graph.snapshot.bin; the export must be read-only"
+    );
+}
+
+/// Without `--full-snapshots` the export would seed `.rgctl/` from the base artifact, apply
+/// the delta in place, and hand back a "head" that still contains the change under review —
+/// reporting a one-line deletion as additions, and destroying the session index on the way.
+/// It must refuse instead, and refuse *before* touching anything.
+#[test]
+fn review_export_refuses_to_synthesize_a_head_snapshot() {
+    let tmp = setup_rewired_repo();
+    let repo = tmp.path();
+    let snapshot = repo.join(".rgctl/graph.snapshot.bin");
+    let snapshot_before = fs::read(&snapshot).unwrap();
+
+    let mut cmd = Command::new(rgctl_bin());
+    cmd.current_dir(repo)
+        .args(["-r", repo.to_str().unwrap()])
+        .args(["review", "export", "--stdout"])
+        .args(["--base-ref", "HEAD~1", "--head-ref", "HEAD"]);
+    let out = cmd.output().expect("spawn review export");
+
+    assert!(
+        !out.status.success(),
+        "the synthesizing default must be refused, not performed"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("real head snapshot") && stderr.contains("--full-snapshots"),
+        "the refusal must name the remedy: {stderr}"
+    );
+    assert_eq!(
+        fs::read(&snapshot).unwrap(),
+        snapshot_before,
+        "a refused export must not have modified the snapshot either"
     );
 }
 
