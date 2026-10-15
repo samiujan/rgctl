@@ -17,15 +17,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   excerpt,
-  loadCfgDetail,
   loadSourceForPath,
   relative,
   repoRoot,
   type CfgBlock,
-  type CfgDetail,
   type FunctionEntry,
 } from "../data";
-import { CfgGraph, hasLines, lineLabel } from "./CfgGraph";
+import { useCfgDetail } from "../useCfgDetail";
+import { BlockDetail } from "./BlockDetail";
+import { CfgGraph, frontierBlockIds, hasLines, lineLabel } from "./CfgGraph";
 import { highlightLine, TOKEN_CLASS } from "../highlight";
 import { Chip, Command, Panel, Stat, Unavailable } from "../shell";
 
@@ -47,23 +47,19 @@ function languageFor(filePath: string | null | undefined): string {
 }
 
 export function Spine({ entry }: { entry: FunctionEntry }) {
-  const [cfg, setCfg] = useState<CfgDetail | null>(null);
+  const cfgState = useCfgDetail(entry.function_id);
+  const cfg = cfgState.kind === "ready" ? cfgState.cfg : null;
   const [source, setSource] = useState<SourceState>({ kind: "loading" });
   const [selectedBlock, setSelectedBlock] = useState<number | null>(null);
   const [prefix, setPrefix] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    setCfg(null);
     setSource({ kind: "loading" });
     setSelectedBlock(null);
 
     void repoRoot().then((p) => {
       if (!cancelled) setPrefix(p);
-    });
-
-    void loadCfgDetail(entry.function_id).then((detail) => {
-      if (!cancelled) setCfg(detail);
     });
 
     void (async () => {
@@ -131,7 +127,7 @@ export function Spine({ entry }: { entry: FunctionEntry }) {
         <Stat label="PDG nodes" value={entry.pdg_nodes ?? "—"} />
         <Stat
           label="Dominance frontier"
-          value={cfg?.dominance_frontiers?.filter((l) => l?.length).length ?? "—"}
+          value={cfg ? frontierBlockIds(cfg).size : "—"}
           hint="blocks where a φ belongs"
         />
       </div>
@@ -204,36 +200,25 @@ export function Spine({ entry }: { entry: FunctionEntry }) {
             subtitle={selectedBlock === null ? "hover a block for its dominator chain; click to select" : "selected — click again to clear"}
             right={cfg ? <Chip tone="green">{cfg.blocks.length} blocks</Chip> : undefined}
           >
-            {!cfg && <p className="text-[11px] text-zinc-500">loading…</p>}
+            {cfgState.kind === "loading" && <p className="text-[11px] text-zinc-500">loading…</p>}
+            {/* An absence is stated here too: this pane previously said "loading…" forever for a subject
+                the bundle has no CFG for, which reads as a slow disk rather than a missing artifact. */}
+            {(cfgState.kind === "absent" || cfgState.kind === "failed") && (
+              <Unavailable
+                what={`No control-flow graph bundled for ${entry.name}`}
+                why={cfgState.reason}
+              />
+            )}
             {cfg && <CfgGraph cfg={cfg} selected={selectedBlock} onSelect={setSelectedBlock} />}
           </Panel>
 
           {highlighted.block && (
-            <div className="mt-3 rounded-lg border border-white/8 bg-white/[0.02] p-3">
-              <div className="flex items-center gap-2">
-                <Chip tone="blue">B{highlighted.block.id}</Chip>
-                <span className="text-[11px] text-zinc-300">{lineLabel(highlighted.block)}</span>
-                <span className="text-[10px] text-zinc-500">
-                  {highlighted.block.stmts_total ?? highlighted.block.statements.length} statement(s) in this block
-                </span>
-                {cfg?.exits.includes(highlighted.block.id) && <Chip tone="blue">exit</Chip>}
-              </div>
-              <div className="mt-2 space-y-0.5">
-                {highlighted.block.statements.length === 0 && (
-                  <span className="text-[11px] text-zinc-600">
-                    no statements recorded for this block
-                    {!hasLines(highlighted.block) && " — it covers no source lines (a synthetic prologue or epilogue block)"}
-                  </span>
-                )}
-                {highlighted.block.statements.map((s, i) => (
-                  <pre
-                    key={i}
-                    className="overflow-x-auto rounded border border-white/8 bg-black/40 px-2 py-1 font-mono text-[11px] text-emerald-200/90"
-                  >
-                    {s}
-                  </pre>
-                ))}
-              </div>
+            <div className="mt-3">
+              <BlockDetail
+                block={highlighted.block}
+                isExit={cfg?.exits.includes(highlighted.block.id) ?? false}
+                inFrontier={cfg ? frontierBlockIds(cfg).has(highlighted.block.id) : false}
+              />
             </div>
           )}
 

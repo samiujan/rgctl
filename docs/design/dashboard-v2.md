@@ -181,7 +181,7 @@ settled in the real implementation, where they can be tested against a real grap
 | | | |
 |---|---|---|
 | ![Orientation: the Repo room](dashboard-v2/screens/01-repo-orientation.png) | ![The Focus and compiler IR](dashboard-v2/screens/02-focus-cfg-dominance.png) | ![Radix portal](dashboard-v2/screens/03-command-palette-radix-portal.png) |
-| **Orientation** — "this screen is not a dashboard"; it ranks what to look at and links into rooms. | **The Focus, carried** — one `StableNodeKey` with the "carry this focus to" affordances, beside real compiler IR: 64 blocks, 96 edges, **55 dominance frontiers**. | **The decisive artefact** — a Radix `Dialog.Portal` rendering. The same code renders *nothing* through `preact/compat`, and that is why the framework changed. |
+| **Orientation** — "this screen is not a dashboard"; it ranks what to look at and links into rooms. | **The Focus, carried** — one `StableNodeKey` with the "carry this focus to" affordances, beside real compiler IR: 64 blocks, 96 edges. The mock's "55 dominance frontiers" is **not** 55 φ sites — see the correction below. | **The decisive artefact** — a Radix `Dialog.Portal` rendering. The same code renders *nothing* through `preact/compat`, and that is why the framework changed. |
 | ![Communities and clones](dashboard-v2/screens/04-architecture-communities-clones.png) | ![The Review room](dashboard-v2/screens/05-review-room-contract.png) | ![Proof: published limits](dashboard-v2/screens/06-proof-published-limits.png) |
 | **Architecture** — modularity 0.455, badged **"not Louvain"**, plus 17 exact clone groups and a chord map of duplication. It also admits the exported field is still misnamed. | **Review** — an honest empty state, and the contract it consumes. That contract is `rgctl review export`, submitted separately as sshaaf/rgctl#117. | **Proof** — the limits published beside the wins, which is the point of the surface. |
 | ![Migration order](dashboard-v2/screens/07-migration-order.png) | | |
@@ -193,6 +193,28 @@ than source; and `Spine` renders an empty state because the caller/callee index 
 The maintainer's parking comment on [issue #61](https://github.com/sshaaf/rgctl/issues/61) named the code
 browser as *the* missing piece — so the next step is the real app, not another prototype. See
 [open question 4](#open-questions).
+
+### Correction: the direction of `dominance_frontiers`
+
+The prototype counted **55 dominance frontiers** for the 64-block function above by taking the number of
+blocks whose frontier row is non-empty, and labelled it "blocks where a φ belongs". That reading is
+backwards, and it is worth recording because the screenshot cannot be corrected and a later reader will
+otherwise read the live lens as broken when it reports a much smaller number.
+
+The bundle writes `dominance_frontiers[i] = DF(i)` — `crates/rgctl-dashboard/src/cfg_export.rs` builds it
+from `DominatorTree::frontier`, which is the standard relation, and its one consumer agrees:
+`crates/rgctl-analysis/src/pdg.rs` walks `frontier(block_id)` to attach control dependence *from* the
+controller in `block_id` *to* the block it yields. So a row is "the joins a φ for definitions made in
+block `i` belongs in", and the block that *has* a non-empty row is not the φ site.
+
+The φ site is a block that **appears** in some row. Checked against a real bundle rather than argued:
+`toggleActive` (`MaterialsPage.tsx`) has `DF(2) = DF(5) = [0]`, and block 0 is its only block with two
+predecessors — the merge. For the 64-block function, 55 blocks carry a non-empty frontier row and 5 blocks
+are φ sites.
+
+`dashboard/src/v2/rooms/CfgGraph.tsx` builds the dot set as the union, and
+`dashboard/src/v2/data.ts` states the direction beside the type so the next call site does not re-derive it.
+The v1 dashboard's own `CfgView` was not changed.
 
 ### Consequences
 
@@ -241,7 +263,6 @@ The bundle is embedded into the binary at compile time via `include_dir` from `d
 - **Self-contained** — `.rgctl/dashboard/` needs no network and no backend, but it does need an **origin**:
   serve it with any static server, or with `rgctl serve`. It does **not** currently work from `file://`, and
   an earlier version of this line claimed it did.
-
   The blocker is not routing, which is what it looks like. Vite emits
   `<script type="module" crossorigin src="./assets/…">`, and Chrome refuses to execute module scripts from a
   `file://` origin — the origin is opaque, so CORS applies and the script never runs. Measured: the page
@@ -258,6 +279,15 @@ The bundle is embedded into the binary at compile time via `include_dir` from `d
   command, and claiming an offline capability that does not work is worse than not having it.
 - **Bundle size is a gate.** Add a size check to `scripts/build-dashboard.sh` so the embedded-bundle cost is tracked per PR.
 - **No new required backend dependencies.** v2 consumes the existing columnar v2 payload and JSON sidecars.
+- **Client routes need a server that knows about them.** v2 is the first dashboard with real paths: v1 was
+  tabs, so its URL never changed and a reload always asked for `/`. v2's routes are `/$roomId` with
+  `?lens=…&focus=…` as search params, so a reload asks the server for `/understand` — and a static file
+  server has no such file. `rgctl serve` answered `404` with an empty body, which is a blank page: the shell
+  never loaded and the router that would have read the URL never ran. `dashboard_fallback` now answers a
+  route with `index.html` (see `is_client_route`), canonicalises a trailing slash with a redirect, and still
+  refuses to answer a *file* request (`/assets/x.js`, `/favicon.ico`) or an API path with the shell.
+  Anyone serving `.rgctl/dashboard/` with their **own** static server needs the same rule — an SPA fallback
+  to `index.html` — and it is not something `rgctl serve` can install on their behalf.
 
 ### Two build hazards to fix while adding the size gate
 
@@ -336,9 +366,11 @@ _Update on every phase PR._
 | `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; read-only, composed, tested (`tests/review_paths_integration.rs`) |
 | v2 app + shell | 1 | **in progress** | React app in `dashboard/src/v2`, own Vite config, own `dist-v2`; Instrument, Orientation, Rooms, Lens control, and the Focus in the URL. Selected with `RGCTL_DASHBOARD_V2=1` — one flag, see below. |
 | v2 Spine lens (code browser) | 1 | **in progress** | Source for the focused symbol beside its CFG, bound both ways; dominance-depth layout; lightweight highlighting. Not syntax-complete and no IDE affordances, deliberately. |
-| v2 test harness + gates | 1 | **done** | Own Vitest config (React, jsdom) and `./scripts/test-dashboard.sh`, which runs every dashboard gate and the offline check as a set. 21 v1 tests + 11 v2 tests. |
+| v2 CFG·PDG lens | 1 | **done** | The same graph as a surface of its own: full-width, `70vh`, a stat row (blocks · edges · dominance frontiers · exits), a dominance-frontier toggle, the selected block read out above the graph, and a typed absence for a subject the bundle has no CFG for. `?lens=cfgpddg`; shares the drawing, the dominator walk and the loader with the Spine rather than re-deriving them. |
+| v2 test harness + gates | 1 | **done** | Own Vitest config (React, jsdom) and `./scripts/test-dashboard.sh`, which runs every dashboard gate and the offline check as a set. 21 v1 tests + 18 v2 tests. |
 | v2 bundle-size gate | 1 | **done** | In `scripts/build-dashboard.sh`. Measured: **v1 321 KiB** gzipped, **v2 136 KiB** — v2 ships less than half despite adding React, because it drops CodeMirror and Sigma. |
 | v2 rooms | 2–6 | **not started** | Rooms render an explicit "not built yet, change N" state naming what fills them. |
+| v2 lenses other than Spine, Code and CFG·PDG | 1 | **not started** | The lens control offers eight lenses and three render. The rest (Dataflow, Slice/Trace, Blast, Metrics, Time) produce an **empty pane, with no explanation** — `Placeholder` is keyed by *room*, so `Placeholder room="understand"` falls through to `null`. They should state the change that fills them, the way the rooms do. |
 | Review Room | 2 | **not started** | |
 | Security Room | 3 | **not started** | |
 | Architecture City | 4 | **not started** | |
