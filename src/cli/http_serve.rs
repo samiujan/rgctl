@@ -12,7 +12,7 @@ use axum::{
     Json, Router,
     body::Body,
     extract::State,
-    http::{HeaderMap, Request, StatusCode, header},
+    http::{HeaderMap, Method, Request, StatusCode, header},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
@@ -213,20 +213,7 @@ async fn run_server(ctx: &CliContext, args: HttpServeArgs, state: Arc<AppState>)
         .parse()
         .with_context(|| format!("invalid bind address {}:{}", args.host, args.port))?;
 
-    let mut app = Router::new().route("/api/health", get(health));
-
-    let mut rest = Router::new().route("/api/status", get(api_pipeline_status));
-    if !args.dashboard_only {
-        rest = rest
-            .route("/api/query", post(api_query))
-            .route("/graphql", post(api_query))
-            .route("/api/semantic/status", get(api_semantic_status))
-            .route("/api/semantic/query", post(api_semantic_query));
-    }
-    if !args.query_only {
-        rest = rest.fallback(dashboard_fallback);
-    }
-    app = app.merge(rest.with_state(state.clone()));
+    let app = build_app(state.clone(), args.dashboard_only, args.query_only);
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -321,6 +308,84 @@ async fn api_pipeline_status(State(state): State<Arc<AppState>>) -> impl IntoRes
     Json(status)
 }
 
+/// The routes `serve` exposes, as one router.
+///
+/// Pulled out of `run_server` so the routing contract can be driven through the **real** router in a test:
+/// the interesting part is not that axum routes `/api/query`, it is that a client-side route reloads to
+/// the shell instead of a 404, and that claim is only worth anything if it is made against the same router
+/// the server binds.
+fn build_app(state: Arc<AppState>, dashboard_only: bool, query_only: bool) -> Router {
+    let app = Router::new().route("/api/health", get(health));
+
+    let mut rest = Router::new().route("/api/status", get(api_pipeline_status));
+    if !dashboard_only {
+        rest = rest
+            .route("/api/query", post(api_query))
+            .route("/graphql", post(api_query))
+            .route("/api/semantic/status", get(api_semantic_status))
+            .route("/api/semantic/query", post(api_semantic_query));
+    }
+    if !query_only {
+        rest = rest.fallback(dashboard_fallback);
+    }
+    app.merge(rest.with_state(state))
+}
+
+/// Whether a request belongs to the client router rather than to the static file server.
+///
+/// v2's routes are real paths — `/$roomId`, with `?lens=…&focus=…` as search params — so a **reload** (or a
+/// pasted link, or a bookmark) asks the *server* for `/understand`, not for `/`. `ServeDir` has no such
+/// file, so it answered `404` with an empty body: the shell never loaded, the router that would have read
+/// the URL never ran, and the page was blank. Every room except the root reloaded that way.
+///
+/// The rule is deliberately narrow, because a fallback that answers *everything* is worse than a 404 — it
+/// turns a missing asset into a MIME error and a missing endpoint into a 200:
+///
+///   * only `GET`/`HEAD`: a `POST` is a method error, not a page (`ServeDir` answers `405`, a truer answer
+///     than `404` — the path exists, the method does not);
+///   * never `/api/…` or `/graphql`, which answer for themselves;
+///   * never a last segment containing `.` — `/assets/index-abc.js` and `/favicon.ico` are *file*
+///     requests, and handing one the HTML shell is how a page renders blank a second way.
+fn is_client_route(method: &Method, path: &str) -> bool {
+    if method != Method::GET && method != Method::HEAD {
+        return false;
+    }
+    if path.starts_with("/api/") || path == "/graphql" {
+        return false;
+    }
+    !path.rsplit('/').next().unwrap_or("").contains('.')
+}
+
+/// `/understand/` → `/understand`, query preserved.
+///
+/// Not cosmetic. The shell references its assets relatively (`./assets/index-abc.js`, because the build uses
+/// `base: "./"`), so a document served at `/understand/` resolves them against `/understand/assets/…`, where
+/// nothing exists — the same blank page arriving by a different door. Canonicalising the URL is what keeps
+/// relative asset resolution correct for a route that is one path segment deep.
+fn without_trailing_slash(path: &str, query: Option<&str>) -> Option<String> {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() || trimmed.len() == path.len() {
+        return None;
+    }
+    Some(match query {
+        Some(q) if !q.is_empty() => format!("{trimmed}?{q}"),
+        _ => trimmed.to_string(),
+    })
+}
+
+/// The shell, for a URL the client router owns: `200`, because the route exists and the server simply has
+/// no file for it. A 404 here would be a lie about the route, not a report about the filesystem.
+async fn spa_index(dir: &Path) -> Response {
+    match tokio::fs::read(dir.join("index.html")).await {
+        Ok(bytes) => ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], bytes).into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("cannot read dashboard index.html: {err}"),
+        )
+            .into_response(),
+    }
+}
+
 async fn dashboard_fallback(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -328,8 +393,25 @@ async fn dashboard_fallback(
 ) -> Response {
     let index = state.dashboard_dir.join("index.html");
     if index.is_file() {
+        let method = req.method().clone();
+        let path = req.uri().path().to_string();
+        let query = req.uri().query().map(str::to_string);
+
+        // Redirect before serving: a trailing slash would otherwise serve the shell at a depth where its
+        // own relative asset URLs do not resolve.
+        if is_client_route(&method, &path) {
+            if let Some(target) = without_trailing_slash(&path, query.as_deref()) {
+                return (StatusCode::PERMANENT_REDIRECT, [(header::LOCATION, target)])
+                    .into_response();
+            }
+        }
+
         let svc = ServeDir::new(&state.dashboard_dir).append_index_html_on_directories(true);
-        return svc.oneshot(req).await.into_response();
+        let response = svc.oneshot(req).await.into_response();
+        if response.status() == StatusCode::NOT_FOUND && is_client_route(&method, &path) {
+            return spa_index(&state.dashboard_dir).await;
+        }
+        return response;
     }
     let wants_json = headers
         .get(header::ACCEPT)
@@ -588,5 +670,158 @@ mod tests {
         assert!(body.fusion);
         assert_eq!(body.limit, 20);
         assert_eq!(body.candidate_pool, 256);
+    }
+
+    // --- the reload contract ------------------------------------------------------------------------
+    //
+    // Driven through `build_app`, the same router `run_server` binds, because the claim being made is about
+    // routing and not about a helper: "a room reloads to the shell" is only true if the fallback is reached
+    // and decides correctly.
+
+    const SHELL: &str = r#"<!doctype html><html><body><div id="root"></div>
+<script type="module" crossorigin src="./assets/index-abc.js"></script></body></html>"#;
+
+    /// A dashboard directory with a shell and one asset, which is all the fallback looks at.
+    fn dashboard_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), SHELL).unwrap();
+        std::fs::create_dir(dir.path().join("assets")).unwrap();
+        std::fs::write(dir.path().join("assets/index-abc.js"), "export {};\n").unwrap();
+        dir
+    }
+
+    fn state_for(dir: &Path) -> Arc<AppState> {
+        Arc::new(AppState {
+            repo: dir.to_path_buf(),
+            dashboard_dir: dir.to_path_buf(),
+            graph: RwLock::new(None),
+            registry: QueryMacroRegistry::with_defaults(),
+            semantic: RwLock::new(None),
+            community: RwLock::new(None),
+            dashboard_announced: AtomicBool::new(true),
+        })
+    }
+
+    async fn get(app: &Router, uri: &str) -> Response {
+        app.clone()
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    async fn body_text(response: Response) -> String {
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    #[tokio::test]
+    async fn a_room_reloads_to_the_shell_instead_of_a_blank_404() {
+        let dir = dashboard_dir();
+        let app = build_app(state_for(dir.path()), false, false);
+
+        for uri in [
+            "/",
+            "/repo",
+            "/understand",
+            "/understand?lens=cfgpddg&focus=822fcb45-7b19-50a2-8d5c-0ef4b55213f5",
+        ] {
+            let response = get(&app, uri).await;
+            assert_eq!(response.status(), StatusCode::OK, "{uri} should serve the shell");
+            let mime = response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            assert!(mime.starts_with("text/html"), "{uri} served as {mime}");
+            assert!(body_text(response).await.contains(r#"id="root""#), "{uri} body");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_fallback_does_not_swallow_files_or_api_paths() {
+        let dir = dashboard_dir();
+        let app = build_app(state_for(dir.path()), false, false);
+
+        // A real asset is still served as itself, with its own type.
+        let asset = get(&app, "/assets/index-abc.js").await;
+        assert_eq!(asset.status(), StatusCode::OK);
+        assert_ne!(
+            asset
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .starts_with("text/html"),
+            true,
+            "a script must not be answered with the HTML shell"
+        );
+
+        // A missing asset stays missing: `index.html` here would be a MIME error, not a page.
+        assert_eq!(
+            get(&app, "/assets/missing.js").await.status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(get(&app, "/favicon.ico").await.status(), StatusCode::NOT_FOUND);
+
+        // Unknown API paths are the API's business, not the router's.
+        assert_eq!(get(&app, "/api/nope").await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            get(&app, "/api/health").await.status(),
+            StatusCode::OK,
+            "health must still answer"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_post_to_a_room_is_never_answered_with_the_shell() {
+        let dir = dashboard_dir();
+        let app = build_app(state_for(dir.path()), false, false);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/understand")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // `ServeDir` answers 405 for a non-GET method, which is a truer answer than 404 — the path exists,
+        // the method does not. The claim under test is only that the fallback declined to serve a page.
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert!(!body_text(response).await.contains(r#"id="root""#));
+    }
+
+    #[tokio::test]
+    async fn a_trailing_slash_is_canonicalised_so_relative_assets_resolve() {
+        let dir = dashboard_dir();
+        let app = build_app(state_for(dir.path()), false, false);
+
+        let response = get(&app, "/understand/?lens=cfgpddg").await;
+        assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("/understand?lens=cfgpddg")
+        );
+
+        // The root keeps its slash: `/` is a directory request, not a route with a stray trailing slash.
+        assert_eq!(get(&app, "/").await.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn query_only_mode_has_no_dashboard_at_all() {
+        let dir = dashboard_dir();
+        let app = build_app(state_for(dir.path()), false, true);
+        assert_eq!(
+            get(&app, "/understand").await.status(),
+            StatusCode::NOT_FOUND,
+            "`--query-only` must not start serving a dashboard"
+        );
     }
 }
