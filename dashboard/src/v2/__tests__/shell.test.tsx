@@ -4,12 +4,12 @@
  * Each of these was previously verified by hand against a live bundle. That is how two bugs in this branch
  * were found, and it is not a regression test: a hand check only happens when someone remembers to do it.
  */
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createAppRouter } from "../router";
-import { installFetchStub, SUBJECT, SOURCE_PATH } from "./fixture";
+import { installFetchStub, SUBJECT, OTHER, SOURCE_PATH } from "./fixture";
 
 function makeClient() {
   return new QueryClient({
@@ -120,5 +120,58 @@ describe("the shell has no tab strip", () => {
     const nav = document.querySelector('nav[aria-label="Rooms"]');
     expect(nav).toBeTruthy();
     expect(nav!.querySelectorAll("button")).toHaveLength(7);
+  });
+});
+
+describe("an unbuilt lens explains itself instead of rendering an empty pane", () => {
+  it("dataflow names the lens and says the data is present", async () => {
+    renderApp(`/understand?lens=dataflow&focus=${SUBJECT}`);
+    // Previously this rendered `null`: `<Placeholder room="understand" />` is keyed by room, so five lens
+    // tabs produced an empty pane with nothing saying why.
+    // The lens names itself in the panel title and again in the explanation, so match all occurrences.
+    expect((await screen.findAllByText(/Dataflow lens/)).length).toBeGreaterThan(0);
+    expect(await screen.findByText(/not written yet — the data is here/)).toBeTruthy();
+    expect(await screen.findByText(/dataflow_detail_dir/)).toBeTruthy();
+  });
+
+  it("metrics states the keying mismatch rather than printing a zero", async () => {
+    renderApp(`/understand?lens=metrics&focus=${SUBJECT}`);
+    expect(await screen.findByText(/blocked, not unbuilt/i)).toBeTruthy();
+    expect(await screen.findByText(/function_metrics\.json/)).toBeTruthy();
+  });
+
+  it("time says why one snapshot is not enough", async () => {
+    renderApp(`/understand?lens=time&focus=${SUBJECT}`);
+    expect(await screen.findByText(/needs a second snapshot/i)).toBeTruthy();
+  });
+});
+
+describe("the palette lands you where the graph is", () => {
+  it("picking a symbol from Repo moves to Understand, keeping the subject", async () => {
+    const router = renderApp("/repo");
+    await screen.findByText(/this screen is not a dashboard/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /Search symbols, communities/ }));
+    const dialog = await screen.findByRole("dialog");
+    // Scoped to the palette: the Repo room also renders symbol chips, so an unscoped query is ambiguous.
+    fireEvent.click(await within(dialog).findByText("handleAuth"));
+
+    // Setting only the Focus left Repo on screen with a subject it does not render, so the graph stayed
+    // two actions away.
+    await waitFor(() => expect(router.state.location.pathname).toBe("/understand"));
+    expect(router.state.location.search).toMatchObject({ focus: SUBJECT });
+  });
+
+  it("does not drag you out of a room that already reads the Focus", async () => {
+    const router = renderApp(`/security?focus=${SUBJECT}`);
+    await screen.findByRole("button", { name: /Search symbols, communities/ });
+
+    fireEvent.click(screen.getByRole("button", { name: /Search symbols, communities/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByText("verify"));
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ focus: OTHER }));
+    // Choosing a symbol while in Security should not move you to Understand.
+    expect(router.state.location.pathname).toBe("/security");
   });
 });

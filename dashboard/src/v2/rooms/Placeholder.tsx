@@ -6,7 +6,7 @@
  * shell enforces everywhere else.
  */
 import { Panel, Unavailable } from "../shell";
-import type { RoomId } from "../focus";
+import type { LensId, RoomId } from "../focus";
 
 const PENDING: Partial<Record<RoomId, { change: string; what: string; why: string }>> = {
   review: {
@@ -35,6 +35,61 @@ const PENDING: Partial<Record<RoomId, { change: string; what: string; why: strin
     why: "The speed matrix, correctness scorecard, determinism checks and published limits — the numbers that justify trusting the rest.",
   },
 };
+
+/**
+ * Lenses that are not written yet, keyed by **lens**.
+ *
+ * `Placeholder` above is keyed by room, so rendering `<Placeholder room="understand" />` for an unbuilt
+ * lens returned `null` — five lens tabs (dataflow, slice, blast, metrics, time) produced an empty pane with
+ * nothing saying why. A tab that appears functional and renders nothing is worse than a tab that is
+ * visibly absent.
+ *
+ * Each entry says what the lens will show and why it is not there, and the two reasons are genuinely
+ * different — which is the point of writing them out rather than saying "not built yet" five times:
+ * most lenses have their data and simply no code, while `metrics` is **blocked by a keying mismatch**.
+ */
+const PENDING_LENSES: Partial<Record<LensId, { what: string; why: string; status: string }>> = {
+  dataflow: {
+    what: "Dataflow lens",
+    status: "not written yet — the data is here",
+    why: "Def-use over the PDG for the focused symbol: which definitions reach its uses, and which of its definitions reach further. This bundle carries the detail (`dataflow_detail_dir: slice`), so the lens is code that has not been written rather than data that is missing.",
+  },
+  slice: {
+    what: "Slice / Trace lens",
+    status: "not written yet — the data is here",
+    why: "A statement-level backward or forward slice for the focused symbol — the lines that must run for it, or that it affects. The `slice/` details are in this bundle for every indexed function.",
+  },
+  blast: {
+    what: "Blast lens",
+    status: "not written yet — the data is here",
+    why: "What the symbol can reach, SCC-condensed, with the caveat that reachability uses `Calls` edges only — so indirect, virtual and macro call sites under-report impact.",
+  },
+  metrics: {
+    what: "Metrics lens",
+    status: "blocked, not unbuilt",
+    why: "Per-symbol centrality cannot be shown honestly from this bundle. `function_metrics.json` rows are keyed by columnar node `index` (0…2944) while every other artifact here is keyed by `function_id`, so there is no join between them. Printing a zero, or matching by position, would be a fabricated number — the lens says so instead.",
+  },
+  time: {
+    what: "Time lens",
+    status: "not written yet — needs a second snapshot",
+    why: "Temporal drift: what this symbol did between two revisions. The mechanism exists — node identity is `BLAKE3(path, name, type)`, so a diff can say new, existing, resolved or regression — but a bundle carries one snapshot, so the lens needs two before it has anything to compare.",
+  },
+};
+
+export function LensPlaceholder({ lens }: { lens: LensId }) {
+  const info = PENDING_LENSES[lens];
+  if (!info) return null;
+  return (
+    <Panel title={info.what} subtitle={info.status}>
+      <Unavailable what={`${info.what} is not implemented yet`} why={info.why} />
+      <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
+        The subject is not lost — the Focus is still selected and every other lens reads the same one. A
+        lens that cannot show something says so rather than rendering an empty pane, because an empty pane
+        is indistinguishable from "nothing found".
+      </p>
+    </Panel>
+  );
+}
 
 export function Placeholder({ room }: { room: RoomId }) {
   const info = PENDING[room];
