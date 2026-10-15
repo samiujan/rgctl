@@ -9,14 +9,22 @@
  *   hover             = the block's dominator chain, i.e. what must execute before it
  *   mute on hover     = everything not on that chain, so the chain is read by exclusion
  *
+ * That amber-dot line is the one the prototype got wrong, and the direction of the relation is the reason:
+ * see `frontierBlockIds` below before touching it.
+ *
  * The vertical axis is the whole point: the layout *is* the analysis. A block lower down is dominated by
  * everything on the amber path above it. Ported from the retired prototype, which is where this was
  * worked out; the prototype showed a static dataset, this draws a live one.
  *
  * Selection is controlled from the parent so the source pane and this pane share one selection rather
  * than each keeping its own — two selections for one Focus is the failure this design exists to avoid.
+ *
+ * Two homes, one drawing. The **Spine** lens puts it beside the source in a half-pane at `52vh`; the
+ * **CFG·PDG** lens gives it a room, at `70vh`, with the dominance-frontier toggle and the stat row above.
+ * Height and reading instructions are therefore props — the layout, the encoding and the interaction are
+ * not, because those are what make it the same analysis in both places.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { CfgDetail } from "../data";
 import { Chip } from "../shell";
 
@@ -51,8 +59,11 @@ export function lineLabel(b: { start_line: number; end_line: number }): string {
  *
  * Memoized, with a depth guard: `idom` can contain a cycle in malformed input, and a walk that trusts it
  * would hang the render rather than draw a wrong picture.
+ *
+ * Exported because the CFG·PDG lens reports the deepest level as a stat: the number must come from the
+ * same walk that lays the graph out, or the receipt and the picture can disagree.
  */
-function dominatorDepths(idom: number[] | undefined, ids: number[]): Map<number, number> {
+export function dominatorDepths(idom: number[] | undefined, ids: number[]): Map<number, number> {
   const depth = new Map<number, number>();
   if (!idom) return depth;
   const walk = (x: number, guard = 0): number => {
@@ -68,14 +79,60 @@ function dominatorDepths(idom: number[] | undefined, ids: number[]): Map<number,
   return depth;
 }
 
+/**
+ * The blocks a φ would be placed in — the blocks that **appear** in some dominance frontier.
+ *
+ * The direction of `dominance_frontiers` is the trap here, and it was read backwards. The export writes
+ * `out[i] = dom.frontier(block_i)` (`crates/rgctl-dashboard/src/cfg_export.rs`), and `DominatorTree::frontier`
+ * is DF(i) — the standard relation, as its one consumer confirms: `pdg.rs` iterates `frontier(block_id)`
+ * to attach control dependence from the *controller* in `block_id` to the *dependent* block it yields.
+ *
+ * So `row[i]` is "the joins where a φ for definitions made in block i belongs", and the block that *has* a
+ * non-empty row is the block whose definitions flow into a join — not the place the φ goes. Building the
+ * set from row indices put the amber dot on the branch instead of on the merge. Verified on a real bundle:
+ * `toggleActive` has `DF(2) = DF(5) = [0]`, and block 0 is the only block with two predecessors.
+ *
+ * The φ site is therefore the union of the rows.
+ */
+export function frontierBlockIds(cfg: CfgDetail): Set<number> {
+  const s = new Set<number>();
+  cfg.dominance_frontiers?.forEach((list) => {
+    for (const id of list ?? []) s.add(id);
+  });
+  return s;
+}
+
+/** The largest dominator depth in the graph: how many rows the layout will need. */
+export function maxDominatorDepth(cfg: CfgDetail): number {
+  const depths = dominatorDepths(
+    cfg.idom,
+    cfg.blocks.map((b) => b.id),
+  );
+  return Math.max(...[...depths.values()], 0);
+}
+
 export function CfgGraph({
   cfg,
   selected,
   onSelect,
+  showFrontier = true,
+  onToggleFrontier,
+  maxHeightClass = "max-h-[52vh]",
+  footnote,
 }: {
   cfg: CfgDetail;
   selected: number | null;
   onSelect: (id: number | null) => void;
+  /**
+   * Draw the amber frontier dots. The *control* belongs to the caller: the lens offers it as a labelled
+   * toggle because it is a claim about the picture, while the Spine keeps the graph's default reading.
+   */
+  showFrontier?: boolean;
+  onToggleFrontier?: () => void;
+  /** The graph has two homes — half a pane in the Spine, most of a room in the lens — so its height is a prop. */
+  maxHeightClass?: string;
+  /** The reading instructions differ with the neighbour: the Spine's source pane, or nothing. */
+  footnote?: ReactNode;
 }) {
   const [hover, setHover] = useState<number | null>(null);
 
@@ -124,13 +181,7 @@ export function CfgGraph({
   }, [hover, cfg]);
 
   /** Blocks in a dominance frontier — indexed by block id, matching `idom`. */
-  const frontier = useMemo(() => {
-    const s = new Set<number>();
-    cfg.dominance_frontiers?.forEach((list, id) => {
-      if (list && list.length) s.add(id);
-    });
-    return s;
-  }, [cfg]);
+  const frontier = useMemo(() => frontierBlockIds(cfg), [cfg]);
 
   const edges = cfg.edges ?? [];
 
@@ -158,13 +209,30 @@ export function CfgGraph({
             </span>
           </span>
         ))}
-        <Chip tone="amber">dominance frontier {frontier.size}</Chip>
-        <span className="ml-auto text-[10px] text-zinc-600">
+        {onToggleFrontier ? (
+          /* A labelled toggle, not a bare count: the dots encode a claim ("a φ belongs here") and a reader
+             has to be able to switch them off to see the graph without it. */
+          <button
+            type="button"
+            onClick={onToggleFrontier}
+            aria-pressed={showFrontier}
+            className={`ml-auto rounded border px-2 py-0.5 text-[10px] ${
+              showFrontier
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                : "border-white/10 text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            dominance frontiers {showFrontier ? "on" : "off"}
+          </button>
+        ) : (
+          <Chip tone="amber">dominance frontier {frontier.size}</Chip>
+        )}
+        <span className={`${onToggleFrontier ? "" : "ml-auto"} text-[10px] text-zinc-600`}>
           depth {layout.maxDepth} · {withLines}/{cfg.blocks.length} blocks carry source lines
         </span>
       </div>
 
-      <div className="max-h-[52vh] overflow-auto rounded border border-white/8 bg-black/30">
+      <div className={`${maxHeightClass} overflow-auto rounded border border-white/8 bg-black/30`}>
         <svg width={layout.width} height={layout.height} className="block">
           <defs>
             {Object.entries(EDGE_COLOR).map(([kind, color]) => (
@@ -253,18 +321,22 @@ export function CfgGraph({
                     exit
                   </text>
                 )}
-                {frontier.has(b.id) && <circle cx={NODE_W - 8} cy={7} r={2.6} className="fill-amber-400" />}
+                {showFrontier && frontier.has(b.id) && (
+                  <circle cx={NODE_W - 8} cy={7} r={2.6} className="fill-amber-400" />
+                )}
               </g>
             );
           })}
         </svg>
       </div>
 
-      <p className="text-[10px] leading-relaxed text-zinc-600">
-        Vertical position is dominator depth from <code className="text-zinc-500">idom</code> — the layout
-        is the dominance relation, not a force simulation. Hover a block to light up its dominator chain;
-        click to read its statements and highlight its lines.
-      </p>
+      {footnote ?? (
+        <p className="text-[10px] leading-relaxed text-zinc-600">
+          Vertical position is dominator depth from <code className="text-zinc-500">idom</code> — the layout
+          is the dominance relation, not a force simulation. Hover a block to light up its dominator chain;
+          click to read its statements and highlight its lines.
+        </p>
+      )}
     </div>
   );
 }

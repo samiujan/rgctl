@@ -5,6 +5,7 @@ import { Instrument } from "./Instrument";
 import { Palette } from "./Palette";
 import { Chip, Panel, Unavailable } from "./shell";
 import { Spine } from "./rooms/Spine";
+import { CfgPdgLens } from "./rooms/CfgPdg";
 import { Placeholder } from "./rooms/Placeholder";
 import { loadFunctions, loadManifest, type FunctionEntry } from "./data";
 import { LENSES, ROOMS, isLens, isRoom, keyOf, resolveFocus, type LensId, type RoomId } from "./focus";
@@ -295,7 +296,8 @@ function UnderstandRoom({
           </p>
         </Panel>
       )}
-      {lens !== "spine" && lens !== "code" && (
+      {lens === "cfgpddg" && <CfgPdgLens entry={entry} />}
+      {lens !== "spine" && lens !== "code" && lens !== "cfgpddg" && (
         <Placeholder room="understand" />
       )}
     </div>
