@@ -51,6 +51,14 @@ The files upstream owns that this branch currently modifies:
 Everything else this branch adds — `dashboard/src/v2`, `dashboard/dist-v2`, the design doc and its
 screenshots, the gate scripts — is a **new file**, which can never conflict.
 
+One of those edits is a **behaviour change, not a fix-up**, and it therefore has to travel with this
+branch rather than wait for #117: `review_export.rs` now **refuses** to run without a real head snapshot,
+because the delta-head synthesis it used to fall back on both overwrote `.rgctl/` in place and produced a
+"head" that did not contain the change under review — a one-line deletion reported as additions. The
+reasoning and the measurements are in `openspec/changes/add-review-workflow-dashboard/tasks.md` §8. If
+upstream's #117 lands a different answer for the synthesizing default, take upstream's and re-derive the
+room's `PRODUCE_COMMAND` — the copy in `workflow.ts` advertises `--full-snapshots` for this reason.
+
 ## Rule 3 — never hand-merge `package-lock.json`
 
 It is generated, it is the largest diff here (+2468 lines), and upstream changes it often. Resolve it by
@@ -88,12 +96,21 @@ identical. That is why upstream-first ordering is worth the wait:
 
 | Upstream PR | Effect once merged |
 |---|---|
-| [#120](https://github.com/sshaaf/rgctl/pull/120) test target | `slice_export.rs` becomes identical — already a no-op |
 | [#109](https://github.com/sshaaf/rgctl/pull/109) gate scripts | `scripts/*` and the harness stop diverging |
 | [#117](https://github.com/sshaaf/rgctl/pull/117) review export | the change-0 files stop diverging |
 
 After such a merge, expect it to be clean; if the merged version differs from the branch we took, the
 conflicts are confined to that change's files and resolve by taking upstream's side.
+
+### Landed upstream
+
+| Upstream PR | Landed as | Verified |
+|---|---|---|
+| [#120](https://github.com/sshaaf/rgctl/pull/120) test target | `d363503` (merge of `91dd2d5`) | **Merged.** The merge is **history-only**: `crates/rgctl-dashboard/src/slice_export.rs` is already byte-identical between `main` and `upstream/main` — our `90db49c` carries the same fix — so `git diff upstream/main main -- crates/rgctl-dashboard/src/slice_export.rs` is empty and a trial merge produced no conflict. Merging adds the commit to the history and nothing to the tree. **`upstream/fix-dashboard-test-target` can then be retired**, since upstream now carries the change. |
+
+Check this section after any `git fetch upstream`: `git rev-list --left-right --count main...upstream/main`
+tells you how many commits are waiting, and `git diff --stat main...upstream/main` tells you whether the
+merge has content or is only history.
 
 ## Environment gotchas
 
@@ -106,15 +123,33 @@ These cost real time and are not obvious from the code:
 2. **A rebuilt dashboard is silently not served.** `rgctl serve` never extracts a bundle; it serves
    whatever the last `discover` wrote to `.rgctl/dashboard`, and the reuse gate compares only the graph
    fingerprint and bundle version — not the UI. Upstream issue
-   [#122](https://github.com/sshaaf/rgctl/issues/122). Workaround:
-   `rm -rf <repo>/.rgctl/dashboard` before re-exporting, or copy `dashboard/dist-v2/*` in directly.
-3. **`dashboard/dist-v2` is committed and embedded at compile time**, so the bundle in a binary is from
+   [#122](https://github.com/sshaaf/rgctl/issues/122). Workaround: `rm -rf <repo>/.rgctl/dashboard`
+   before re-exporting, or copy `dashboard/dist-v2/*` in directly.
+   **But that workaround is not sufficient on its own, and it fails silently.** Deleting only
+   `.rgctl/dashboard` and re-exporting writes `cfg_index.json` as `available: false, function_count: 0`:
+   the CFG stage is skipped as already-computed, while the dashboard exporter needs records produced by
+   that stage. Measured on a good bundle (305 functions) — re-export after `rm -rf .rgctl/dashboard`
+   alone → **0 functions**; also removing `.rgctl/analysis` so CFG re-runs → **305 functions** again,
+   with the review artifact still valid. Verify with `manifest.analysis.cfg_available`; an empty function
+   index raises no error and shows up only as absent Focus handoffs ("not in this graph") and empty CFG
+   lenses. Prefer `rm -rf <repo>/.rgctl/dashboard <repo>/.rgctl/analysis` before re-exporting.
+3. **Cold indexing is not deterministic.** Three cold indexes of the same commit, in the same directory,
+   with the same command gave **3598 edges once and 3592 twice** (nodes stable). Any edge count — including
+   `rgctl diff` and the review artifact's `call_edges` — therefore carries run-to-run variance of this
+   order. The *sign* of a change is reliable; the magnitude is not, so do not read a small `added` count on
+   a pure deletion as a bug in the differ without reproducing it. Reproduce with
+   `for i in 1 2 3; do rm -rf .rgctl; rgctl discover . --write-json-graph; done` and compare edge sets.
+4. **`dashboard/dist-v2` is committed and embedded at compile time**, so the bundle in a binary is from
    whenever `cargo build` last ran. After rebuilding the dashboard: `npm --prefix dashboard run build:v2`
    then `cargo build --bin rgctl`.
-4. **v2 is selected by `RGCTL_DASHBOARD_V2=1`** and served behind the single `--with-dashboard` flag.
-5. **CI does not run upstream.** `.github/workflows/ci.yml:38` gates the job on a `ci` label that does not
+5. **v2 is selected by `RGCTL_DASHBOARD_V2=1`** and served behind the single `--with-dashboard` flag.
+6. **CI does not run upstream.** `.github/workflows/ci.yml:38` gates the job on a `ci` label that does not
    exist in that repository, so no upstream PR gets an automated check. Run the gates locally before
    pushing.
+7. **`openspec/` is gitignored, by upstream's own `.gitignore`** ("OpenSpec change proposals (local
+   only — do not commit)"). Change specs do not travel with a PR and do not survive a clean clone. The
+   durable record for a change has to live in a tracked document — for the dashboard work, that is
+   `docs/design/dashboard-v2.md`.
 
 ## If this branch becomes unusable
 

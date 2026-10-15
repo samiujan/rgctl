@@ -194,6 +194,18 @@ The maintainer's parking comment on [issue #61](https://github.com/sshaaf/rgctl/
 browser as *the* missing piece — so the next step is the real app, not another prototype. See
 [open question 4](#open-questions).
 
+### The real app
+
+These are the v2 build against an indexed repository — not a mock. The first two were taken during change
+1 and had gone unreferenced here; the third is change 2's Review room.
+
+| | |
+|---|---|
+| ![v2 Repo room](dashboard-v2/screens/08-v2-repo-room.png) | ![v2 Spine lens](dashboard-v2/screens/09-v2-spine-lens.png) |
+| **Repo** — the orientation room, ranking what to look at rather than drawing everything. | **Spine** — source beside the CFG for the focused symbol, bound both ways. |
+| ![v2 Review room](dashboard-v2/screens/10-v2-review-room.png) | |
+| **Review** — change 2. A one-line deletion, read as a deletion: **0 added, 2 removed**, `same revision` because the artifact's recorded head digest equals the bundle's graph digest, each removed call path shown as its own delta, a `carry →` handoff per uniquely identified symbol, the sections the artifact did *not* produce listed with its own reason (`policy — no --policy-file provided`), and the producing command as a receipt. The figures above are the artifact's own; the room computes nothing. | |
+
 ### Correction: the direction of `dominance_frontiers`
 
 The prototype counted **55 dominance frontiers** for the 64-block function above by taking the number of
@@ -288,6 +300,18 @@ The bundle is embedded into the binary at compile time via `include_dir` from `d
   refuses to answer a *file* request (`/assets/x.js`, `/favicon.ico`) or an API path with the shell.
   Anyone serving `.rgctl/dashboard/` with their **own** static server needs the same rule — an SPA fallback
   to `index.html` — and it is not something `rgctl serve` can install on their behalf.
+- **A workflow artifact arrives as a bundle file, not as a route.** `rgctl review export` composes
+  `.rgctl/workflows/review.json`; the dashboard export copies it into the bundle as `workflows/review.json`
+  and records its presence, path, digest and generation time in the manifest. The room reads it exactly the
+  way it reads `cfg/<id>.json` or `sources/<id>.txt` — a path, not a mechanism — so the bundle stays the unit
+  of delivery and the existing offline gate keeps covering it. **Rejected: a route** such as
+  `/api/workflow/review` reading the file live. It would be always current with no copy to go stale, but it
+  adds an HTTP surface and a server change, would be the only dataset delivered that way, and would stop the
+  room working in a bundle served by anything other than `rgctl serve`. The staleness it avoids is bought
+  back instead by comparing the artifact's recorded head digest against the bundle's graph digest and saying
+  so when they disagree — which is why the Review room can display `same revision` or warn above its rows.
+  The cost is the opposite one: the copy *can* go stale, and the artifact must be produced **before** the
+  dashboard is re-exported.
 
 ### Two build hazards to fix while adding the size gate
 
@@ -363,15 +387,15 @@ _Update on every phase PR._
 | Audit defect fixes — tab bar (D6) | prereq | **not started** | IA change; belongs with the v2 shell |
 | Audit defect fixes — favicon (D8) | prereq | **not started** | Missing icon → 404 per load |
 | `dashboard/dist` regen | prereq | **done** | Rebuilt with `wasm-pack` and landed in `8f09655` (sshaaf/rgctl#110). Until then the source fixes were invisible in a built binary, because `dashboard/dist` is compile-time embedded — see [Build hazards](#two-build-hazards-to-fix-while-adding-the-size-gate). |
-| `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; read-only, composed, tested (`tests/review_paths_integration.rs`) |
+| `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; composed, tested (`tests/review_paths_integration.rs`). **Read-only as declared**: it now *refuses* to synthesize a head snapshot, because that path overwrote `.rgctl/` in place and described a head that did not contain the change — a one-line deletion reported as 22 additions. See `openspec/changes/add-review-workflow-dashboard/tasks.md` §8. |
 | v2 app + shell | 1 | **in progress** | React app in `dashboard/src/v2`, own Vite config, own `dist-v2`; Instrument, Orientation, Rooms, Lens control, and the Focus in the URL. Selected with `RGCTL_DASHBOARD_V2=1` — one flag, see below. |
 | v2 Spine lens (code browser) | 1 | **in progress** | Source for the focused symbol beside its CFG, bound both ways; dominance-depth layout; lightweight highlighting. Not syntax-complete and no IDE affordances, deliberately. |
 | v2 CFG·PDG lens | 1 | **done** | The same graph as a surface of its own: full-width, `70vh`, a stat row (blocks · edges · dominance frontiers · exits), a dominance-frontier toggle, the selected block read out above the graph, and a typed absence for a subject the bundle has no CFG for. `?lens=cfgpddg`; shares the drawing, the dominator walk and the loader with the Spine rather than re-deriving them. |
-| v2 test harness + gates | 1 | **done** | Own Vitest config (React, jsdom) and `./scripts/test-dashboard.sh`, which runs every dashboard gate and the offline check as a set. 21 v1 tests + 18 v2 tests. |
+| v2 test harness + gates | 1 | **done** | Own Vitest config (React, jsdom) and `./scripts/test-dashboard.sh`, which runs every dashboard gate and the offline check as a set. 21 v1 tests + **52 v2 tests**. |
 | v2 bundle-size gate | 1 | **done** | In `scripts/build-dashboard.sh`. Measured: **v1 321 KiB** gzipped, **v2 136 KiB** — v2 ships less than half despite adding React, because it drops CodeMirror and Sigma. |
-| v2 rooms | 2–6 | **not started** | Rooms render an explicit "not built yet, change N" state naming what fills them. |
+| v2 rooms | 2–6 | **in progress** | The Review room exists; the remaining rooms render an explicit "not built yet, change N" state naming what fills them. |
 | v2 lenses other than Spine, Code and CFG·PDG | 1 | **not started** | The lens control offers eight lenses and three render. The rest (Dataflow, Slice/Trace, Blast, Metrics, Time) produce an **empty pane, with no explanation** — `Placeholder` is keyed by *room*, so `Placeholder room="understand"` falls through to `null`. They should state the change that fills them, the way the rooms do. |
-| Review Room | 2 | **not started** | |
+| Review Room | 2 | **in progress** | Renders the composed artifact: change summary, changed symbols with their `path_delta`, the producing command as a receipt, and the four absence states (no artifact · unreadable · not evaluated · truncated) each with the artifact's own reason. A symbol's identity is resolved by joining file + name against the index — never guessed — so an ambiguous name renders without a handoff. Warns above the figures when the artifact's revision differs from the browsed graph. 11 render tests against a real artifact. Outstanding: the artifact's own `ambiguous` array is unrendered, and no fixture makes `unscored_files` non-empty. |
 | Security Room | 3 | **not started** | |
 | Architecture City | 4 | **not started** | |
 | Proof surface | 5 | **not started** | |
