@@ -284,7 +284,6 @@ export function CfgGraph({
             const onChain = chain.has(b.id);
             const isSelected = selected === b.id;
             const dim = hover !== null && !onChain && !isSelected;
-            const lines = hasLines(b);
             return (
               <g
                 key={b.id}
@@ -307,8 +306,11 @@ export function CfgGraph({
                   B{b.id}
                 </text>
                 <text x={44} y={16} className="fill-zinc-500" style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}>
-                  {/* A block with no lines points at no source, so it says so rather than claiming L0. */}
-                  {lines ? lineLabel(b) : "no source line"}
+                  {/* `lineLabel` already renders `—` for a block with no source lines, so the special
+                      case here was both redundant and too long for a 158px block: "no source line" ran into
+                      the entry/exit chip. The role chips carry the structural meaning; the line field only
+                      has to say whether there is a line. */}
+                  {lineLabel(b)}
                   {` · ${b.stmts_total ?? b.statements.length} stmt`}
                 </text>
                 {isEntry && (

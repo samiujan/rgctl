@@ -51,13 +51,16 @@ describe("source and graph are bound in both directions", () => {
 });
 
 describe("blocks with no source are stated, not numbered", () => {
-  it("a synthetic block says it covers no source lines rather than showing L0", async () => {
+  it("a synthetic block renders an em dash for its line field rather than L0", async () => {
     renderSpine();
     await screen.findAllByText("handleAuth");
 
     // B2 has start_line 0, which is the absence of a line. "L0" would invite the reader to believe
     // otherwise — the same `—`-versus-`0` confusion fixed as D4 in the v1 dashboard.
-    expect(await screen.findByText(/no source line/)).toBeTruthy();
+    // The block renders its line field and statement count in one text node, so match the pair rather
+    // than the dash alone — asserting on "—" alone fails for a reason that has nothing to do with the
+    // behaviour under test.
+    expect(await screen.findAllByText(/— · \d+ stmt/)).not.toHaveLength(0);
     expect(screen.queryByText(/^L0/)).toBeNull();
   });
 
