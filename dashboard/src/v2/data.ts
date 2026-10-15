@@ -97,6 +97,12 @@ export interface CfgEdge {
  *
  * `idom` and `dominance_frontiers` are indexed by **block id**, and block ids are sequential from 0, so
  * `idom[b.id]` is the immediate dominator of that block. That contract is what the layout depends on.
+ *
+ * The *direction* of `dominance_frontiers` is the part that gets misread, so it is stated here rather than
+ * inferred at each call site: `dominance_frontiers[i]` is **DF(i)** — the blocks where a φ for definitions
+ * made in block `i` belongs — which mirrors `DominatorTree::frontier` in `rgctl-analysis`. A block is
+ * therefore a φ placement site when it appears in *some* row, not when its own row is non-empty. Read the
+ * other way round, the graph dots the branch instead of the merge.
  */
 export interface CfgDetail {
   function_id: string;
@@ -170,7 +176,7 @@ export async function loadSourceForPath(filePath: string): Promise<string | null
 /**
  * The longest directory prefix shared by every source path, so the UI can show repo-relative paths.
  *
- * Bundle paths are absolute (`/Users/…/mt2/src/…`) and the manifest does not record the repo root. Showing
+ * Bundle paths are absolute (`/Users/…/<checkout>/src/…`) and the manifest does not record the repo root. Showing
  * them verbatim would put a developer's home directory in the dashboard, which is the leak fixed as D5 in
  * the v1 defect work. Deriving the prefix from the data beats guessing at it.
  */
