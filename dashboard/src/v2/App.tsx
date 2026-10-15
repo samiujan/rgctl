@@ -6,7 +6,7 @@ import { Palette } from "./Palette";
 import { Chip, Panel, Unavailable } from "./shell";
 import { Spine } from "./rooms/Spine";
 import { CfgPdgLens } from "./rooms/CfgPdg";
-import { Placeholder } from "./rooms/Placeholder";
+import { LensPlaceholder, Placeholder } from "./rooms/Placeholder";
 import { loadFunctions, loadManifest, type FunctionEntry } from "./data";
 import { LENSES, ROOMS, isLens, isRoom, keyOf, resolveFocus, type LensId, type RoomId } from "./focus";
 import { useState } from "react";
@@ -47,9 +47,20 @@ export function App() {
   const setFocus = (key: string | null) =>
     void navigate({ search: (prev) => ({ ...prev, focus: key ?? undefined }), replace: false });
 
+  /**
+   * Picking a symbol sets the Focus, and leaves the orientation surface if that is where you are.
+   *
+   * The intent is that the graph is one action from the landing page. Setting only the Focus left Repo on
+   * screen with a subject it does not render, so the graph stayed two actions away — pick, then guess that
+   * Understand is where it lives. Rooms that read the Focus are left alone: choosing a symbol while in
+   * Security should not drag you out of Security.
+   */
   const pick = (f: FunctionEntry) => {
     setPaletteOpen(false);
     setFocus(keyOf(f));
+    if (room === "repo") {
+      void navigate({ to: "/$roomId", params: { roomId: "understand" }, search: (prev) => ({ ...prev, focus: keyOf(f) }) });
+    }
   };
 
   const goRoom = (next: RoomId) =>
@@ -297,9 +308,7 @@ function UnderstandRoom({
         </Panel>
       )}
       {lens === "cfgpddg" && <CfgPdgLens entry={entry} />}
-      {lens !== "spine" && lens !== "code" && lens !== "cfgpddg" && (
-        <Placeholder room="understand" />
-      )}
+      {lens !== "spine" && lens !== "code" && lens !== "cfgpddg" && <LensPlaceholder lens={lens} />}
     </div>
   );
 }
