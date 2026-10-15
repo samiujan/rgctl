@@ -48,28 +48,33 @@ const PENDING: Partial<Record<RoomId, { change: string; what: string; why: strin
  * different — which is the point of writing them out rather than saying "not built yet" five times:
  * most lenses have their data and simply no code, while `metrics` is **blocked by a keying mismatch**.
  */
-const PENDING_LENSES: Partial<Record<LensId, { what: string; why: string; status: string }>> = {
+const PENDING_LENSES: Partial<Record<LensId, { what: string; why: string; status: string; tag: string }>> = {
   dataflow: {
+    tag: "code not written",
     what: "Dataflow lens",
     status: "not written yet — the data is here",
     why: "Def-use over the PDG for the focused symbol: which definitions reach its uses, and which of its definitions reach further. This bundle carries the detail (`dataflow_detail_dir: slice`), so the lens is code that has not been written rather than data that is missing.",
   },
   slice: {
+    tag: "code not written",
     what: "Slice / Trace lens",
     status: "not written yet — the data is here",
     why: "A statement-level backward or forward slice for the focused symbol — the lines that must run for it, or that it affects. The `slice/` details are in this bundle for every indexed function.",
   },
   blast: {
+    tag: "code not written",
     what: "Blast lens",
     status: "not written yet — the data is here",
     why: "What the symbol can reach, SCC-condensed, with the caveat that reachability uses `Calls` edges only — so indirect, virtual and macro call sites under-report impact.",
   },
   metrics: {
+    tag: "blocked: no join key",
     what: "Metrics lens",
     status: "blocked, not unbuilt",
     why: "Per-symbol centrality cannot be shown honestly from this bundle. `function_metrics.json` rows are keyed by columnar node `index` (0…2944) while every other artifact here is keyed by `function_id`, so there is no join between them. Printing a zero, or matching by position, would be a fabricated number — the lens says so instead.",
   },
   time: {
+    tag: "needs 2 snapshots",
     what: "Time lens",
     status: "not written yet — needs a second snapshot",
     why: "Temporal drift: what this symbol did between two revisions. The mechanism exists — node identity is `BLAKE3(path, name, type)`, so a diff can say new, existing, resolved or regression — but a bundle carries one snapshot, so the lens needs two before it has anything to compare.",
@@ -81,7 +86,7 @@ export function LensPlaceholder({ lens }: { lens: LensId }) {
   if (!info) return null;
   return (
     <Panel title={info.what} subtitle={info.status}>
-      <Unavailable what={`${info.what} is not implemented yet`} why={info.why} />
+      <Unavailable tag={info.tag} what={`${info.what} is not implemented yet`} why={info.why} />
       <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
         The subject is not lost — the Focus is still selected and every other lens reads the same one. A
         lens that cannot show something says so rather than rendering an empty pane, because an empty pane
@@ -96,7 +101,11 @@ export function Placeholder({ room }: { room: RoomId }) {
   if (!info) return null;
   return (
     <Panel title={info.what} subtitle={`not built yet — ${info.change}`}>
-      <Unavailable what={`${info.what} is not implemented in change 1`} why={info.why} />
+      <Unavailable
+        tag="not implemented yet"
+        what={`${info.what} is not implemented in change 1`}
+        why={info.why}
+      />
       <p className="mt-3 text-[11px] leading-relaxed text-zinc-500">
         This is deliberate: change 1 builds the frame and the Focus, and adds no analysis view. The rooms
         arrive as changes 2–6 and are expected to be additive — if one of them needs a new surface rather

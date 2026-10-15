@@ -59,11 +59,22 @@ export function Stat({ label, value, hint }: { label: string; value: ReactNode; 
  * why, rather than rendering an empty container a reader will interpret as "nothing to see". This is
  * the difference between "no violations" and "policy never ran".
  */
-export function Unavailable({ what, why }: { what: string; why: string }) {
+export function Unavailable({
+  what,
+  why,
+  // "not in this bundle" is a claim about *availability*, and it is the wrong claim most of the time:
+  // an unbuilt lens is absent because no code reads data that is present, and a blocked lens is absent
+  // because two artifacts share no key. A hard-coded badge contradicted the explanation under it.
+  tag = "not in this bundle",
+}: {
+  what: string;
+  why: string;
+  tag?: string;
+}) {
   return (
     <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.04] p-3">
       <div className="flex items-center gap-2">
-        <Chip tone="amber">not in this bundle</Chip>
+        <Chip tone="amber">{tag}</Chip>
         <span className="text-[12px] text-zinc-200">{what}</span>
       </div>
       <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-400">{why}</p>
