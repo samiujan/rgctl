@@ -138,6 +138,10 @@ describe("an unbuilt lens explains itself instead of rendering an empty pane", (
     renderApp(`/understand?lens=metrics&focus=${SUBJECT}`);
     expect(await screen.findByText(/blocked, not unbuilt/i)).toBeTruthy();
     expect(await screen.findByText(/function_metrics\.json/)).toBeTruthy();
+    // The badge used to be hard-coded to "not in this bundle", which contradicted the sentence under it:
+    // the metrics data *is* in the bundle, keyed by `index` (0…2944) with no `function_id` to join on.
+    expect(await screen.findByText("blocked: no join key")).toBeTruthy();
+    expect(screen.queryByText("not in this bundle")).toBeNull();
   });
 
   it("time says why one snapshot is not enough", async () => {
