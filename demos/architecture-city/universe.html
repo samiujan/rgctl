@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — universe preview</title>
+<link rel="stylesheet" href="./preview.css">
+<style>
+  /* the universe needs its own sky: deeper, and the canvas owns the background */
+  body{background:radial-gradient(140% 110% at 42% 18%,#101a3a 0%,#080d1d 45%,#03050c 100%)}
+  #legend i.amber{background:linear-gradient(90deg,#ffb03a,#ff7a2f)}
+  #legend i.cyan{background:#59e0ff}
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body data-style="universe">
+<div id="app"></div>
+
+<div class="hud" id="head">
+  <h1>Architecture — universe</h1>
+  <p>metasfresh · a beam's <b>length</b> is a district's member count, its <b>core</b> its function count</p>
+  <div id="stats"></div>
+</div>
+
+<div class="hud" id="net">
+  <h2>The web — what the lines mean</h2>
+  <p id="net-why"></p>
+  <ol id="net-top"></ol>
+</div>
+
+<div class="hud" id="pick"><div class="name">Click a core</div><p class="hint">its own filaments light up</p></div>
+
+<div id="legend">
+  <span><i class="amber"></i>every edge · brightness = weight (log)</span>
+  <span><i class="cyan"></i>selected district's edges · thickness = weight</span>
+</div>
+
+<div class="hud" id="foot">
+  <span><kbd>drag</kbd> orbit</span><span><kbd>wheel</kbd> zoom</span><span><kbd>right-drag</kbd> pan</span><span><kbd>click</kbd> a core</span>
+</div>
+
+<div id="tip" hidden></div>
+
+<div id="controls">
+  <div class="group"><span class="lbl">layout</span><button id="l-ring">ring</button><button id="l-clusters">clusters</button><button id="l-spiral">milky way</button><button id="l-sphere">sphere</button></div>
+  <div class="group styles"><span class="lbl">style</span><a href="./index.html" data-style="blocks">blocks</a><a href="./universe.html" data-style="universe">universe</a></div>
+</div>
+
+<script type="module" src="./app-universe.js"></script>
+</body>
+</html>

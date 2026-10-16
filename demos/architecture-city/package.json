@@ -1,0 +1,14 @@
+{
+  "name": "architecture-city-demo",
+  "private": true,
+  "type": "module",
+  "description": "Preview of the Architecture room: four layouts x two rendering styles, from a real rgctl bundle.",
+  "scripts": {
+    "vendor": "node copy-vendor.mjs",
+    "data": "node build-data.mjs",
+    "serve": "python3 -m http.server 8097"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  }
+}
