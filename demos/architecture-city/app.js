@@ -56,7 +56,6 @@ Object.assign(controls, {
   dampingFactor: 0.08,
   minDistance: 90,
   maxDistance: 2600,
-  maxPolarAngle: Math.PI * 0.49,
   autoRotate: true,
   autoRotateSpeed: 0.4,
 });
@@ -70,6 +69,8 @@ const rim = new THREE.DirectionalLight(0x76b4ff, 0.7);
 rim.position.set(-500, 260, -420);
 scene.add(rim);
 
+// A globe floats: no plate, no grid. Hidden per layout rather than built per layout, so switching back and
+// forth costs nothing.
 const ground = new THREE.Mesh(
   new THREE.CircleGeometry(2400, 96),
   new THREE.MeshStandardMaterial({ color: 0x0e1626, roughness: 1 }),
@@ -267,6 +268,11 @@ let mode = "spiral";
 function place(m, animate = false) {
   mode = m;
   foot = data.foot?.[m] ?? null;
+  // The globe has no "down": let the camera pass under it, and take the plate and grid away.
+  const globe = m === "sphere";
+  ground.visible = !globe;
+  grid.visible = !globe;
+  controls.maxPolarAngle = globe ? Math.PI - 0.02 : Math.PI * 0.49;
   const up = new THREE.Vector3(0, 1, 0);
   districts.forEach((d, i) => {
     const n = normalOf(d, m);

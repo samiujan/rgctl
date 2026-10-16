@@ -60,7 +60,7 @@ Two thresholds are tunable there: `COLOURED` (how many communities have their co
 | **ring** | **The export's own coordinates.** One radius for every district, ordered by size — 256 districts 33 units apart on a circle. It is honest and it is not a floor plan: every community's members are scattered right around it, so the web has no shape. |
 | **clusters** | **Derived here.** Each community in a blob, the largest outermost. |
 | **milky way** | **Derived here.** A two-arm log spiral with a central bulge. |
-| **sphere** | **Derived here.** A globe; each community gets a cap sized by its member count, and solids stand on the surface normal. |
+| **sphere** | **Derived here.** A globe; each community gets a cap sized by its member count, and solids stand on the surface normal. It has no plate and no grid, and the camera may pass **under** it — a globe has no "down", so the usual horizon clamp is lifted for this layout only. |
 
 ## Two styles
 

@@ -65,7 +65,6 @@ Object.assign(controls, {
   dampingFactor: 0.07,
   minDistance: 120,
   maxDistance: 5200,
-  maxPolarAngle: Math.PI * 0.495,
   autoRotate: true,
   autoRotateSpeed: 0.28,
 });
@@ -325,6 +324,8 @@ function frame(m) {
 function place(m, animate = false) {
   mode = m;
   foot = data.foot?.[m] ?? null;
+  // The globe has no "down": let the camera pass under it.
+  controls.maxPolarAngle = m === "sphere" ? Math.PI - 0.02 : Math.PI * 0.495;
   const up = new THREE.Vector3(0, 1, 0);
   districts.forEach((d, i) => {
     const base = basePos(d, m);
