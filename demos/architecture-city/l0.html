@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — D: namespace volumes, packages, community overlay</title>
+<link rel="stylesheet" href="./preview.css">
+<link rel="icon" href="data:,">
+<style>
+  /* the three channelled legend this page needs: object, overlay, artifact */
+  #legend{flex-wrap:wrap;gap:10px 18px;max-width:min(1100px,92vw)}
+  #legend i.wire{background:none;border:1px dashed #93a6bd}
+  #legend i.grey{background:#5b6b7d}
+  #legend i.hatch{background:repeating-linear-gradient(45deg,#3b4657 0 3px,#2a3240 3px 6px)}
+  .big{color:#e8f0fb;font-weight:600}
+  .warn{color:#ffcf7a}
+  .layers{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+  .layers b{color:#8fd0ff;font-weight:600}
+  /* the object legend is a list, not a sentence: without this it runs under the panel beside it */
+  /* the panel had no position, so it shrink-wrapped into a 140px column of single words */
+  #what{top:172px;left:16px;padding:12px 14px;width:440px;min-width:360px;max-height:calc(100vh - 300px);overflow:auto}
+  /* block + padding, not grid: a grid item's 1fr collapses to min-content and prints one word per line */
+  #object-legend{display:block;margin-top:6px}
+  #object-legend span{display:block;position:relative;padding-left:20px;margin-bottom:6px;
+    font-size:10.5px;line-height:1.45;color:#a8b6c8}
+  #object-legend i{position:absolute;left:0;top:3px;width:12px;height:12px;border-radius:3px}
+  #object-legend b{color:#dbe7f5;font-weight:600}
+  #clampnote{margin-top:8px;font-size:10px;color:#8f9fb2;line-height:1.45}
+  #groups{margin-top:8px;display:flex;flex-direction:column;gap:2px;font-size:10.5px;color:#a8b6c8}
+  #groups span{display:flex;justify-content:space-between;gap:8px}
+  #groups em{color:#cfe0f2;font-style:normal}
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body data-style="blocks">
+<div id="app"></div>
+
+<div class="hud" id="head">
+  <h1>Architecture — D</h1>
+  <p class="hint">design aid, not the room · metasfresh, from a real <code>.rgctl/dashboard</code></p>
+  <div id="stats"></div>
+  <div id="layer-note" class="layers"></div>
+</div>
+
+<div class="hud" id="what">
+  <h2>What each object is</h2>
+  <div id="object-legend"></div>
+  <div id="clampnote"></div>
+  <div id="groups"></div>
+</div>
+
+<div class="hud" id="pick"><div class="name">Hover anything</div><p class="hint">a volume is a namespace, a box is a package</p></div>
+
+<div id="legend"></div>
+
+<div class="hud" id="foot">
+  <span><kbd>drag</kbd> orbit</span><span><kbd>wheel</kbd> zoom</span><span><kbd>right-drag</kbd> pan</span>
+</div>
+
+<div id="tip" hidden></div>
+
+<div id="controls">
+  <div class="group"><span class="lbl">layer</span>
+    <button id="m-packages">namespace › package</button><button id="m-communities">communities (aggregate)</button>
+  </div>
+  <div class="group"><span class="lbl">colour</span>
+    <button id="c-community">shares its community</button><button id="c-namespace">namespace</button>
+  </div>
+  <div class="group"><span class="lbl">coupling</span>
+    <button id="e-toggle">edges on</button>
+  </div>
+</div>
+
+<script type="module" src="./l0.js"></script>
+</body>
+</html>

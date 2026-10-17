@@ -359,7 +359,9 @@ Rules:
 > That script — and `test-dashboard-metasfresh.sh` — had been accidentally deleted in `4dcc35d`
 > ("update README and cleanup"), while four live references to them survived, so the documented
 > per-phase gate could not be run at all. Both are restored and modernized to the current
-> `RGCTL_*` env vars, `rgctl` binary name, and `--with-cfg --with-security --with-taint` flags.
+> `RGCTL_*` env vars, `rgctl` binary name, and `--with-cfg --with-security --with-taint` flags. **Merged upstream as
+> #109**, together with `0211f97`, which stopped `test-dashboard-golden.sh` defaulting to one developer's home
+> directory — on every other machine its golden half had been silently skipping while the gate reported success.
 
 ---
 
@@ -374,10 +376,15 @@ Rules:
 | 1 | `add-dashboard-v2-shell` | New app + build pipeline, additive behind a flag, harness parity | 0 |
 | 2 | `add-review-workflow-dashboard` | Review Room | 1 |
 | 3 | `add-security-workflow-dashboard` | Risk-weighted triage (severity × centrality × reachability) | 1 |
-| 4 | `add-architecture-city-view` | 3D city from the metagraph + the full coupling web. **Drift is out of scope** (a bundle describes one revision) | 1 |
+| 4 | `add-architecture-city-view` | **Universe P0**: L0 community regions + L1 package solids, the full coupling web per layer, five layouts, scales, coverage, absence states, camera fly-to, `--with-universe` + `manifest.mode`. **Drift is out of scope** (a bundle describes one revision) | 1 |
 | 5 | `add-proof-surface` | Speed matrix, correctness scorecard, determinism, live p95 | 1 |
 | 6 | `add-migration-workflow-dashboard` | Restyle/scope existing MigrationView | 1 |
 | 7 | `add-interprocedural-trace-export` | Emit `BlastSliceTrace` in the JSON envelope instead of trailing stdout (`src/cli/blast_radius.rs:532`) | — |
+| U1 | `add-universe-search` | Command bar (name / qualified / community / semantic) + `search_landmarks.json` + `/api/semantic/query` when served; fly-to wired to hits | 4 |
+| U2 | `add-universe-drilldown` | L2 functions via the WASM `expand()` worker, lazy on camera proximity; `Universe › community › package › symbol` breadcrumb | 4 |
+| U3 | `add-universe-panels` | Context panels replacing tabs — blast, symbol detail, CFG/slice/dataflow insets — reusing the existing lenses | U2 |
+| U4 | `add-universe-commands` | Clickable in-universe actions: exact CLI + copy first, `serve`-spawned runs with progress second | 4, U3 |
+| U5 | `retire-v1-dashboard` | Migration/taint layers in the cosmos, `--with-dashboard` deprecated then removed. **The maintainer's call** | U1–U4 |
 
 **Change 0 leads** because it is pure CLI/JSON: it has no UI opinions to argue about, it is independently useful to agent consumers, and it establishes the `workflows/` contract that the Review Room later renders.
 
@@ -398,30 +405,37 @@ The trace must move into the `BlastRadiusResponse` envelope. This is a correctne
 dashboard as a **single full-screen 3D cosmos** browsed by communities: LOD drill-down
 (communities → packages → functions → symbol), a unified search bar with **animated camera fly-to**, clickable
 CLI actions, a new `--with-universe` flag, and `--with-dashboard` deprecated. It predates the
-`rg-build` → `rgctl` rename, so its flags and paths are stale; its shape is not. It is worth being explicit
-about the overlap, because change 4 is most of that issue's P0 drawing:
+`rg-build` → `rgctl` rename, so its flags and paths are stale; its shape is not.
 
-**Change 4 covers:** communities in 3D from `communities.json` + `metagraph.json`, the full inter-district
-coupling web, a 3D camera, and five layouts (one the export's, four derived and labelled as such).
+**Decided: adopt it whole, in the phase sequence above** (rows 4, U1–U5). An earlier position of ours was
+"build the drawing as one room among eight, and leave the rest" — that was a risk argument, and phasing answers
+risk better than narrowing does. The room and the universe share one data contract, one renderer and one LOD;
+shipping both as separate surfaces would mean drawing a 3D graph twice.
 
-**Change 4 does not cover, and does not pretend to:** LOD levels below "district", search with fly-to,
-clickable in-universe actions, any tab removal, `--with-universe`, or a separate `universe/` bundle path.
-Those are what turn a room into a product surface, and each is a change of its own — retiring v1 in particular
-is the maintainer's decision, not ours.
+What each row inherits from this doc: the renderer decision
+([why three.js is mounted imperatively](#why-threejs-is-mounted-imperatively)), the one-bundle rule below, and
+the layer model — **L0 regions are communities, L1 solids are packages**, which is a distinction the issue
+assumes ("communities as regions") but does not state, and which the export does not make for free: the
+metagraph's nodes are directories and a package's community is a majority vote of its members.
 
-**Two #61 decisions this design takes a position on:**
+**Two #61 open decisions settled here:**
 
-- **Bundle path.** Reuse `.rgctl/dashboard/` with the existing `RGCTL_DASHBOARD_V2=1` switch. A separate
-  `universe/` directory would fork every gate — size, offline, `include_dir` embed — for a bundle that is
-  largely the same files.
-- **Layout at export time.** #61 asks the producer to precompute the layout, to avoid a cold-start force
-  layout in the browser. That reason does not apply to change 4's layouts, which are closed-form over 256
-  districts with no force simulation, so they are computed in the room and the producer stays untouched. **The
-  moment a force-directed layout is wanted, it moves into the export** and the room reads it.
+- **Bundle path.** One bundle: `--with-universe` is a flag over `.rgctl/dashboard/` that also writes
+  `manifest.mode: "universe"`. A separate `universe/` directory would fork every gate — size, offline,
+  `include_dir` embed — for a bundle that is largely the same files.
+- **Renderer.** three.js mounted imperatively, not `@react-three/fiber`, and not graphier: the scene is one
+  instanced mesh per layer, one line-segment set per layer and a camera. #61 lists "custom Three.js vs graphier
+  vs a nexgraph spike"; the demos in `demos/architecture-city/` are that spike, already run.
 
-The measured facts change 4 contributes — the `layout_circle` ring, the deliberately absent `member_indices`,
-the `MAX_METANODES` cap and its `(other)` bucket, the colliding 160-of-214 palette — are things any universe
-implementation needs and would otherwise rediscover.
+**Still open, deliberately, and decided by measurement in their own phase:**
+
+- **L0 geometry and nesting.** A region needs a shape (blob, globe cap, funnel segment) and a nesting rule for
+  its packages. The globe caps are the only place the nesting already exists in code.
+- **Where L2/L3 data comes from** — the WASM worker or `serve` (U2).
+- **Whether semantic search can work offline** — static landmarks, or `serve` only with a degraded mode that
+  says so (U1).
+- **Clickable actions**: #61's option A (copy the command) then B (spawn with progress) — U4, and B needs a
+  server surface that does not exist yet.
 
 ---
 
@@ -440,7 +454,7 @@ _Update on every phase PR._
 | Audit defect fixes — tab bar (D6) | prereq | **not started** | IA change; belongs with the v2 shell |
 | Audit defect fixes — favicon (D8) | prereq | **not started** | Missing icon → 404 per load |
 | `dashboard/dist` regen | prereq | **done** | Rebuilt with `wasm-pack` and landed in `8f09655` (sshaaf/rgctl#110). Until then the source fixes were invisible in a built binary, because `dashboard/dist` is compile-time embedded — see [Build hazards](#two-build-hazards-to-fix-while-adding-the-size-gate). |
-| `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; composed, tested (`tests/review_paths_integration.rs`). **Read-only as declared**: it now *refuses* to synthesize a head snapshot, because that path overwrote `.rgctl/` in place and described a head that did not contain the change — a one-line deletion reported as 22 additions. See `openspec/changes/add-review-workflow-dashboard/tasks.md` §8. |
+| `rgctl review export` | 0 | **done** | `.rgctl/workflows/review.json`; composed, tested (`tests/review_paths_integration.rs`). **Merged upstream as [#117](https://github.com/sshaaf/rgctl/pull/117), without the refusal.** Upstream's merged producer still defaults to a synthesized delta head (`full_snapshots: false`); refusing it is our change, still on this branch only, because that path overwrote `.rgctl/` in place and described a head that did not contain the change — a one-line deletion reported as 22 additions. It is what [#124](https://github.com/sshaaf/rgctl/issues/124) asks for. See `openspec/changes/add-review-workflow-dashboard/tasks.md` §8. |
 | v2 app + shell | 1 | **in progress** | React app in `dashboard/src/v2`, own Vite config, own `dist-v2`; Instrument, Orientation, Rooms, Lens control, and the Focus in the URL. Selected with `RGCTL_DASHBOARD_V2=1` — one flag, see below. |
 | v2 Spine lens (code browser) | 1 | **in progress** | Source for the focused symbol beside its CFG, bound both ways; dominance-depth layout; lightweight highlighting. Not syntax-complete and no IDE affordances, deliberately. |
 | v2 CFG·PDG lens | 1 | **done** | The same graph as a surface of its own: full-width, `70vh`, a stat row (blocks · edges · dominance frontiers · exits), a dominance-frontier toggle, the selected block read out above the graph, and a typed absence for a subject the bundle has no CFG for. `?lens=cfgpddg`; shares the drawing, the dominator walk and the loader with the Spine rather than re-deriving them. |
@@ -448,12 +462,12 @@ _Update on every phase PR._
 | v2 bundle-size gate | 1 | **done** | In `scripts/build-dashboard.sh`. Measured: **v1 321 KiB** gzipped, **v2 136 KiB** — v2 ships less than half despite adding React, because it drops CodeMirror and Sigma. |
 | v2 rooms | 2–6 | **in progress** | The Review room exists; the remaining rooms render an explicit "not built yet, change N" state naming what fills them. |
 | v2 lenses other than Spine, Code and CFG·PDG | 1 | **not started** | The lens control offers eight lenses and three render. The rest (Dataflow, Slice/Trace, Blast, Metrics, Time) produce an **empty pane, with no explanation** — `Placeholder` is keyed by *room*, so `Placeholder room="understand"` falls through to `null`. They should state the change that fills them, the way the rooms do. |
-| Review Room | 2 | **done, deliberately unmerged** | Renders the composed artifact: change summary, changed symbols with their call-path deltas, the producing command as a receipt, and **five** states in which it says nothing — no artifact · unreadable · sections the artifact did not produce · truncated · a symbol-scoped export that resolved to nothing — each with the artifact's own reason. A symbol's identity is resolved by joining file + name against the index, never guessed, so an ambiguous name renders without a handoff; the room reads only a view model, and a test fails if an artifact field name reaches it. Warns above the figures when the artifact's revision differs from the browsed graph. 14 render tests against two **real** exports, all gates green (55 v2 tests). **Disposition: no upstream PR yet** — the room consumes `rgctl review export`, which is [#117](https://github.com/sshaaf/rgctl/pull/117) and still awaiting review; until it lands the room renders an artifact no released binary produces, and a reviewer would be reading a UI against a contract that can still move. The branch (`feat/review-workflow-dashboard`) holds it; the one open task (5.6) waits on #117 adding a stable symbol id. |
+| Review Room | 2 | **done; PR not yet opened** | Renders the composed artifact: change summary, changed symbols with their call-path deltas, the producing command as a receipt, and **five** states in which it says nothing — no artifact · unreadable · sections the artifact did not produce · truncated · a symbol-scoped export that resolved to nothing — each with the artifact's own reason. A symbol's identity is resolved by joining file + name against the index, never guessed, so an ambiguous name renders without a handoff; the room reads only a view model, and a test fails if an artifact field name reaches it. Warns above the figures when the artifact's revision differs from the browsed graph. 14 render tests against two **real** exports, all gates green (55 v2 tests). **Disposition (updated 2026-10-17): #117 is merged**, so the room now renders an artifact every build produces and the earlier reason for holding it back is gone. What remains is one producer behaviour change that did **not** travel with #117 — the refusal to synthesize a delta head (#124) — and it should go upstream **first, on its own**, because it is a small change to an upstream-owned file with its own argument, and the room reads better once the artifact it renders is trustworthy. Sequence: PR A = the refusal (#124); PR B = the room. `openspec/` is gitignored, so the record of why lives here and in `MAINTENANCE.md`. The branch (`feat/review-workflow-dashboard`) holds it. The one open task (5.6) is **not** unblocked by #117: the merged artifact carries no stable symbol id (`grep` for `symbol_id`/`stable_id` in the merged `review_export.rs` is empty), so file+name joining stays. |
 | Security Room | 3 | **not started** | |
-| Architecture City | 4 | **spec reconciled; room not started** | The gate (task 1) is done and the **design demos exist**: `demos/architecture-city/`, 5 layouts × 2 styles drawn from a real 256-district / 6,524-edge bundle. They overtook the spec and forced four corrections, each of which would otherwise have shipped a false figure: coverage cannot come from `member_indices` (absent by design above 50k nodes — 0 of 256 carry it, so the spec's formula said "0 of 838,801 covered"); the exported `x`/`y` is a `layout_circle` ring, not a floor plan, and its id order is not a size ranking either; the coupling figure is **every** edge with brightness = `log(weight)`, not the top pairs covering 80%; and the renderer is three.js, with the size gate to be re-baselined against a *measured* bundled delta. Also recorded: `MAX_METANODES = 256` caps the node set and the `(other)` remainder bucket is the largest solid in the city at 15.6% of the graph. Open upstream defect: **8 of 256** district labels embed the corpus checkout path. |
+| Architecture City / Universe P0 | 4 | **spec reconciled; not started** | Scope is now **universe P0** ([#61](#relationship-to-upstream-61-rg-universe)): **L0 community regions** (214, area from `member_count`, bridged by the 2,398 pairs the 6,524 package edges form) with the **L1 package solids** (256) nested inside them, five layouts, log height, clamped footprints, the full coupling web, camera fly-to, and `--with-universe` + `manifest.mode` over the one existing bundle. The design demos exist: `demos/architecture-city/`, 5 layouts × 2 styles from a real bundle. They overtook the spec and forced four corrections, each of which would otherwise have shipped a false figure: coverage cannot come from `member_indices` (absent by design above 50k nodes — 0 of 256 carry it, so the spec's formula said "0 of 838,801 covered"); the exported `x`/`y` is a `layout_circle` ring, not a floor plan, and its id order is not a size ranking either; the coupling figure is **every** edge with brightness = `log(weight)`; and the renderer is three.js, with the size gate re-baselined against a *measured* bundled delta. Two facts the demos hid and this doc now states: **a solid is a package, not a community** (256 packages vs 214 communities — the community appeared only as colour), and the `(other)` remainder bucket is the largest solid at 15.6% of the graph. Open upstream defect: **8 of 256** package labels embed the corpus checkout path. |
 | Proof surface | 5 | **not started** | |
 | Migration Room restyle | 6 | **not started** | |
-| `BlastSliceTrace` export | 7 | **not started** | JSON envelope corruption repro confirmed. Previously also blocked on two `rgctl slice` defects, now **fixed and under review** — issues sshaaf/rgctl#113/#114, PRs #115/#116. See `audit/slice-addressing.md`. |
+| `BlastSliceTrace` export | 7 | **not started** | JSON envelope corruption repro confirmed. Previously also blocked on two `rgctl slice` defects, now **fixed and merged upstream** — issues sshaaf/rgctl#113/#114, PRs #115/#116. See `audit/slice-addressing.md`. |
 
 ### How to reach v2
 

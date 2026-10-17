@@ -34,30 +34,40 @@ If something in an upstream-owned file needs changing, either change it upstream
 adapter in our own code. The Review room's adapter for `.rgctl/workflows/review.json` exists for exactly
 this reason: if upstream changes that format, one file here changes.
 
-The files upstream owns that this branch currently modifies:
+The files upstream owns that this branch currently modifies. **Re-measured after merging `upstream/main` on
+2026-10-17** (`git diff --name-only upstream/main...HEAD`, keeping only paths upstream has): the merge took
+#117, #116 and #109, which retired most of the original list — `slice_export.rs` and the gate scripts are
+upstream's now, and only the rows below are still ours.
 
 | File | Our edit | Upstream activity (last 60 commits there) |
 |---|---|---|
-| `dashboard/package-lock.json` | +2468 / −173 | 10 — **generated, see Rule 3** |
 | `src/cli/http_serve.rs` | +251 / −16 | 16 — both sides edit request handling; likeliest real conflict |
-| `src/cli/mod.rs` | +96 / −0 | 60 — extremely hot, but our edit is purely additive |
-| `docs/json-api.md` | +81 / −0 | 44 — additive section; both sides append |
-| `tests/review_paths_integration.rs` | +346 / −0 | 1 |
-| `crates/rgctl-dashboard/src/bundle.rs` | +140 / −16 | 3 |
-| `scripts/build-dashboard.sh` | +83 / −11 | 3 |
-| `src/cli/pr_check.rs`, `src/cli/review.rs`, `src/cli/review_export.rs`, `manifest.rs`, `lib.rs`, `slice_export.rs` | small | 1–3 |
-| `dashboard/package.json`, `tsconfig.json`, `vitest.config.ts`, `.gitignore`, `skills/rgctl/references/command-encyclopedia.md` | small | 1–23 |
+| `crates/rgctl-dashboard/src/bundle.rs` | +140 / −16 | 3 — the workflow artifact copy into the bundle |
+| `crates/rgctl-dashboard/src/lib.rs` | +114 / −3 | 3 |
+| `tests/dashboard_bundle.rs` | +106 / −0 | 3 — purely additive |
+| `scripts/build-dashboard.sh` | +83 / −11 | 3 — the v2 bundle and its size gate |
+| `crates/rgctl-dashboard/src/manifest.rs` | +74 / −0 | 3 — additive fields |
+| `tests/review_paths_integration.rs` | +45 / −0 | 6 |
+| `src/cli/review_export.rs` | +38 / −2 | 2 — **the refusal; see below** |
+| `dashboard/package.json` | +21 / −1 | 11 |
+| `.gitignore` | +11 / −0 | 23 |
+| `dashboard/tsconfig.json` | +10 / −3 | 2 |
+| `dashboard/vitest.config.ts` | +3 / −0 | 1 |
+| `dashboard/package-lock.json` | +2468 / −173 | 10 — **generated, see Rule 3** |
 
 Everything else this branch adds — `dashboard/src/v2`, `dashboard/dist-v2`, the design doc and its
-screenshots, the gate scripts — is a **new file**, which can never conflict.
+screenshots, `MAINTENANCE.md` — is a **new file**, which can never conflict. (The gate scripts used to be
+new files here; #109 merged them, so they are upstream's and no longer on this list.)
 
-One of those edits is a **behaviour change, not a fix-up**, and it therefore has to travel with this
-branch rather than wait for #117: `review_export.rs` now **refuses** to run without a real head snapshot,
-because the delta-head synthesis it used to fall back on both overwrote `.rgctl/` in place and produced a
-"head" that did not contain the change under review — a one-line deletion reported as additions. The
-reasoning and the measurements are in `openspec/changes/add-review-workflow-dashboard/tasks.md` §8. If
-upstream's #117 lands a different answer for the synthesizing default, take upstream's and re-derive the
-room's `PRODUCE_COMMAND` — the copy in `workflow.ts` advertises `--full-snapshots` for this reason.
+One of those edits is a **behaviour change, not a fix-up**, and #117 answered the question by not
+answering it: upstream merged the artifact producer with the synthesizing default intact, so
+`review_export.rs` here still **refuses** to run without a real head snapshot — the delta-head synthesis it
+would otherwise fall back on both overwrote `.rgctl/` in place and produced a "head" that did not contain the
+change under review (a one-line deletion reported as additions). That refusal did **not** travel with #117 and
+is now the whole content of [#124](https://github.com/sshaaf/rgctl/issues/124), which is why it goes upstream
+as its own PR before the Review room's. The reasoning and the measurements are in
+`openspec/changes/add-review-workflow-dashboard/tasks.md` §8. `workflow.ts` advertises `--full-snapshots`
+because the refusal requires it, so the two must land together.
 
 **What change 4 will add to the first column, and nothing else.** The Architecture room's code is new files
 under `dashboard/src/v2`; its only *upstream-owned* edit is a raised budget in `scripts/build-dashboard.sh`
