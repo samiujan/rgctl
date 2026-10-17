@@ -174,7 +174,15 @@ pub enum Commands {
             help_heading = "Session / limits")]
         write_json_graph: bool,
 
-        /// Export the static dashboard bundle under `.rgctl/dashboard/`. Off by default.
+        /// Export the universe dashboard bundle under `.rgctl/dashboard/`. Off by default.
+        ///
+        /// This is the v2 dashboard: L0 namespace volumes over L1 packages, the coupling web, and
+        /// `manifest.mode: "universe"`.
+        #[arg(long = "with-universe",
+            help_heading = "Session / limits")]
+        with_universe: bool,
+
+        /// Deprecated: use `--with-universe`. Routes to it and will be removed in the next release.
         #[arg(long = "with-dashboard",
             help_heading = "Session / limits")]
         with_dashboard: bool,
@@ -1598,6 +1606,7 @@ impl Cli {
                 with_dfg_loops,
                 with_ast_skeleton,
                 write_json_graph,
+                with_universe,
                 with_dashboard,
                 export_migration_hints,
                 with_harmonic,
@@ -1631,6 +1640,7 @@ impl Cli {
                         with_dfg_loops,
                         with_ast_skeleton,
                         write_json_graph,
+                        with_universe,
                         with_dashboard,
                         export_migration_hints,
                         with_harmonic,
