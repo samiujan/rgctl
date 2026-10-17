@@ -17,17 +17,11 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Point MF_BUNDLE at any indexed dashboard bundle — the `.rgctl/dashboard` directory of a repository you
-// have run `rgctl discover . --with-dashboard --with-cfg` in. The default is this repo's own corpus
-// directory, which is gitignored until you have indexed something.
+// have run `rgctl discover . --with-dashboard --with-cfg` in.
 const BUNDLE =
   process.env.MF_BUNDLE ?? join(HERE, "..", "..", "example", "metasfresh-4.9.8b", ".rgctl", "dashboard");
 if (!existsSync(join(BUNDLE, "metagraph.json"))) {
-  console.error(
-    `No metagraph at ${BUNDLE}\n\n` +
-      "Index a corpus first, or point MF_BUNDLE at one:\n\n" +
-      "  cd <repo> && rgctl discover . --with-dashboard --with-cfg\n" +
-      "  MF_BUNDLE=<repo>/.rgctl/dashboard npm run data\n",
-  );
+  console.error(`No metagraph at ${BUNDLE}\n\nIndex a corpus first, or point MF_BUNDLE at one.\n`);
   process.exit(1);
 }
 const COLOURED_N = Number(process.env.COLOURED ?? 64); // communities whose coupling pairs are drawable
@@ -142,6 +136,25 @@ const districts = meta.nodes.map((n, index) => {
   };
 });
 
+// vortex: a 3D funnel — a formation rather than a map.
+//
+// Districts are ordered biggest-community-first and then wound down a cone: wide mouth at the top, tail at
+// the bottom, angle on the golden angle so no two neighbours line up. It carries no meaning of its own: it
+// exists so a 3D view has a volume to orbit, and the layout label says so.
+{
+  const order = districts
+    .map((d, i) => ({ i, rank: ranked.findIndex((c) => c.id === d.cid), size: d.size ?? 0 }))
+    .sort((a, b) => a.rank - b.rank || b.size - a.size);
+  const H = 640;
+  order.forEach((entry, k) => {
+    const t = k / Math.max(1, order.length - 1); // 0 = mouth, 1 = tail
+    const ang = k * ANGLE;
+    const rad = 55 + 215 * t;
+    const y = H * (0.5 - t);
+    districts[entry.i].vortex = [rad * Math.cos(ang), y, rad * Math.sin(ang)];
+  });
+}
+
 // sphere: a globe. Each community gets its own cap, sized by its member count, and its districts fill
 // that cap.
 //
@@ -222,7 +235,7 @@ const spacing = {};
 const layoutScale = {};
 const footScale = {};
 {
-  const dataKey = { ring: "ring", clusters: "cluster", spiral: "spiral", sphere: "sphere" };
+  const dataKey = { ring: "ring", clusters: "cluster", spiral: "spiral", sphere: "sphere", vortex: "vortex" };
   const pointsOf = (key) =>
     districts.map((d) => {
       const p = d[key] ?? [0, 0];
@@ -272,7 +285,7 @@ const footScale = {};
 // reported rather than hidden — a clamped channel is a changed channel.
 const foot = {};
 const clampReport = {};
-for (const [name, key] of Object.entries({ ring: "ring", clusters: "cluster", spiral: "spiral", sphere: "sphere" })) {
+for (const [name, key] of Object.entries({ ring: "ring", clusters: "cluster", spiral: "spiral", sphere: "sphere", vortex: "vortex" })) {
   const pts = districts.map((d) => {
     const p = d[key] ?? [0, 0];
     return p.length === 3 ? p : [p[0], 0, p[1]];

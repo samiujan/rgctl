@@ -62,21 +62,17 @@ Two thresholds are tunable there: `COLOURED` (how many communities have their co
 | **milky way** | **Derived here.** A two-arm log spiral with a central bulge. |
 | **sphere** | **Derived here.** A globe; each community gets a cap sized by its member count, and solids stand on the surface normal. It has no plate and no grid, and the camera may pass **under** it — a globe has no "down", so the usual horizon clamp is lifted for this layout only. |
 
-## Three styles
+## Two styles
 
 | Style | What it is |
 |---|---|
 | **blocks** | lit solids on a plate — massing and gaps. three.js |
 | **universe** | glowing beams and cores, bloom, a starfield. three.js + post-processing |
-| **atlas** | a **3D constellation with a printed caption**: matte unlit dots, hairline links, depth fog, a serif headline, a legend with counts, a pink accent and a camera fly-to for the pinned district. three.js |
 
-The style switcher carries the chosen layout across the page load. `STYLES.md` records how each is built,
-and where `atlas` came from: it is identified from `withmarbleapp/os-taxonomy` → `media/curriculum-viz.gif`,
-an **embedding of 1,000+ curriculum standards** and it is **3D** — the first reading of it as a flat point
-field was wrong, and the motion is what settles it (the silhouette reshapes, dots change apparent size and
-occlude, the camera flies into the cloud). The label `atlas` is ours; see `STYLES.md` for why, and for the
-deliberate departures (radius is member count; all edges are drawn with brightness by weight; the funnel
-formation is generated, not embedded).
+The style switcher carries the chosen layout across the page load.
+
+A third style, `atlas`, was built and dropped as not needed. `STYLES.md` records what it was and keeps the
+one durable lesson from it — read the motion of a reference, not four sampled stills.
 
 ## Honest notes
 
@@ -100,8 +96,7 @@ formation is generated, not embedded).
 | `layouts.js` | one place that knows what a layout is: `anchorOf`, `extentOf`, `webOffset` |
 | `controls.js` | the control bar; layout and style, state carried in the URL |
 | `app.js` | the `blocks` view (three.js) |
-| `app-atlas.js`, `atlas.css` | the `atlas` view (three.js, no bloom) |
 | `app-universe.js` | the `universe` view (three.js + bloom) |
-| `index.html`, `universe.html`, `atlas.html`, `preview.css` | the three pages and their shared HUD |
-| `STYLES.md` | what each style is, and where `atlas` was identified from |
+| `index.html`, `universe.html`, `preview.css` | the two pages and their shared HUD |
+| `STYLES.md` | what each style is, and the style that was dropped |
 | `copy-vendor.mjs` | copies three.js into `vendor/` |
