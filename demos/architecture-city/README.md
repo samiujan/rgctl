@@ -68,14 +68,15 @@ Two thresholds are tunable there: `COLOURED` (how many communities have their co
 |---|---|
 | **blocks** | lit solids on a plate — massing and gaps. three.js |
 | **universe** | glowing beams and cores, bloom, a starfield. three.js + post-processing |
-| **atlas** | an **editorial plate of a point cloud**: flat vivid dots, hairline edges, a serif headline, a legend with counts, a pink accent for the pinned district. Canvas 2D |
+| **atlas** | a **3D constellation with a printed caption**: matte unlit dots, hairline links, depth fog, a serif headline, a legend with counts, a pink accent and a camera fly-to for the pinned district. three.js |
 
 The style switcher carries the chosen layout across the page load. `STYLES.md` records how each is built,
 and where `atlas` came from: it is identified from `withmarbleapp/os-taxonomy` → `media/curriculum-viz.gif`,
-an embedding map of 1,000+ curriculum standards. The label `atlas` is ours — see `STYLES.md` for why, and
-for the three deliberate departures from the reference (radius is member count; all edges are drawn with
-brightness by weight; Canvas 2D instead of WebGL, which makes it the cheap style at a few KB against
-three.js's 425 KB).
+an **embedding of 1,000+ curriculum standards** and it is **3D** — the first reading of it as a flat point
+field was wrong, and the motion is what settles it (the silhouette reshapes, dots change apparent size and
+occlude, the camera flies into the cloud). The label `atlas` is ours; see `STYLES.md` for why, and for the
+deliberate departures (radius is member count; all edges are drawn with brightness by weight; the funnel
+formation is generated, not embedded).
 
 ## Honest notes
 
@@ -99,7 +100,7 @@ three.js's 425 KB).
 | `layouts.js` | one place that knows what a layout is: `anchorOf`, `extentOf`, `webOffset` |
 | `controls.js` | the control bar; layout and style, state carried in the URL |
 | `app.js` | the `blocks` view (three.js) |
-| `app-atlas.js`, `atlas.css` | the `atlas` view (Canvas 2D) |
+| `app-atlas.js`, `atlas.css` | the `atlas` view (three.js, no bloom) |
 | `app-universe.js` | the `universe` view (three.js + bloom) |
 | `index.html`, `universe.html`, `atlas.html`, `preview.css` | the three pages and their shared HUD |
 | `STYLES.md` | what each style is, and where `atlas` was identified from |

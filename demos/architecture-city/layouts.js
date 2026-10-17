@@ -5,13 +5,14 @@
  * (design.md §8 correction 6). The rest are DERIVED here, and the room would have to say so: presenting
  * our own layout as the export's would be the same class of mistake as the ring.
  */
-export const LAYOUTS = ["ring", "clusters", "spiral", "sphere"];
+export const LAYOUTS = ["ring", "clusters", "spiral", "sphere", "vortex"];
 
 export const LAYOUT_TITLE = {
   ring: "the exported coordinates: one radius for every district, ordered by size",
   clusters: "derived: each community in a blob on a plane, the largest outermost",
   spiral: "derived: a two-arm log spiral with a central bulge",
   sphere: "derived: a globe, each community a cap sized by its member count",
+  vortex: "derived: a 3D funnel, biggest communities at the mouth — a formation, not a map",
 };
 
 /** True for the layouts this viewer invented rather than read from the bundle. */
@@ -24,6 +25,11 @@ export const isDerived = (layout) => layout !== "ring";
  * globe's beams stand out of its surface instead of all pointing at the sky.
  */
 export function anchorOf(d, layout) {
+  if (layout === "vortex") {
+    const [x, y, z] = d.vortex ?? [0, 0, 0];
+    const n = Math.hypot(x, z) || 1;
+    return { pos: [x, y, z], normal: [x / n, 0, z / n] };
+  }
   if (layout === "sphere") {
     const [x, y, z] = d.sphere ?? [0, 430, 0];
     const n = Math.hypot(x, y, z) || 1;

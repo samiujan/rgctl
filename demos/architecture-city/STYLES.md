@@ -19,36 +19,48 @@ three.js + post-processing (~425 KB gzipped).
 ## `atlas` — the new one
 
 **Identified from** `withmarbleapp/os-taxonomy` → `media/curriculum-viz.gif` ("Everything a child learns.").
-That animation is an **embedding map of 1,000+ curriculum standards**: every standard is a dot, positioned
-by similarity, joined to its prerequisites by hairline edges, on a near-black ground.
+That animation is an **embedding of 1,000+ curriculum standards** — every standard a dot, positioned by
+similarity, joined to its prerequisites by hairlines, on a near-black ground.
 
-The style is not "a scatter plot", it is **an editorial plate of a point cloud**:
+**Correction to my first reading.** Sampled as four stills, the GIF looks like a flat point field, and that
+is how the first version of this style was built — Canvas 2D, no depth. It is **3D**, and the motion is what
+settles it:
+
+- the **silhouette reshapes completely** between frames — a rotating volume, not a panned plane;
+- dots **change apparent size and occlude** each other — perspective depth;
+- the camera **flies into** the cloud (frames 62–104) and a district is pinned while flying;
+- the settled formation is a **funnel with the largest communities at the mouth**.
+
+The flat typography is what misled: it is a printed caption on a dimensional object.
 
 | Element | What it is |
 |---|---|
 | ground | near-black with a blue cast (`#060910`–`#0d0f1a`), no gradient, no grid |
-| nodes | small, flat, **fully saturated** categorical dots — sampled from the reference: teals `#65dad6` / `#5ef6c5`, greens `#5fe490` / `#42986f`, violets `#543de0` / `#7173da`, blues `#6aa2e3`, reds `#ed3956`, orange `#f0af5d` |
-| edges | **hairline** white-ish lines at very low alpha; the mesh is texture, not emphasis |
-| selection | one accent — pink/magenta `#d44377` — recolours the selected subset **and its induced edges**, everything else dims toward the ground |
-| typography | a large **serif** headline, uppercase letterspaced micro-labels above it, a legend key bottom-left with counts, a floating detail card top-right, interaction hints bottom-right |
-| interaction | *hover to preview · click to pin · esc to close* — the reference's own hint line |
-| motion | slow drift; the camera settles on a region rather than snapping |
+| nodes | small **matte, unlit** dots, fully saturated categorical hues — sampled from the reference: teals `#65dad6` / `#5ef6c5`, greens `#5fe490` / `#42986f`, violets `#543de0` / `#7173da`, blues `#6aa2e3`, reds `#ed3956`, orange `#f0af5d` |
+| links | **hairline** lines at low alpha, additive — a faint texture that only thickens where coupling concentrates |
+| depth | perspective camera and fog into the ground, so near dots read as near |
+| selection | one accent — pink `#d44377` — recolours the pinned district **and its edges**, everything else dims, and the **camera flies to it** |
+| typography | a large **serif** headline, uppercase letterspaced micro-labels, a legend key with counts, a floating detail card, the reference's own hint line |
+| motion | slow orbital drift; *hover to preview · click to pin · esc to close* |
 
-**Why the label `atlas`.** It is a flat, printed map of everything, with a legend, a plate and a caption —
-the printed-atlas metaphor matches the editorial typography, and it stays clearly distinct from the other
-two: `blocks` is massing in space, `universe` is a glowing population in 3D, `atlas` is a printed plate of
-the same field. Rejected: *constellation* and *nebula* (both collide with `universe`), *scatter* (names the
-chart, not the look), *map* (too generic inside a code tool).
+**Why the label `atlas`.** A map of everything, with a legend, a plate and a caption — the metaphor matches
+the editorial typography, and it stays distinct from the other two: `blocks` is massing in space,
+`universe` is a glowing population, `atlas` is a dimensional field read through a printed caption. Rejected:
+*constellation* and *nebula* (both collide with `universe`), *scatter* (names the chart, not the look),
+*map* (too generic inside a code tool).
 
 **Deliberate departures from the reference**, each for a reason:
 
 - **Dot radius is member count (log).** The reference's dots are uniform because its categories are its
-  channel. Ours are not: one district holds 15.5% of the graph, and a uniform field would hide it.
+  channel. Ours cannot be: one district holds 15.5% of the graph.
 - **All 6,524 edges are drawn, brightness = log(weight)** — consistent with the other two styles, where the
-  web's brightness *is* coupling strength. The reference has one edge kind; ours has three and a 65,000×
+  web's brightness *is* coupling strength. The reference has one edge kind; we have three and a 65,000×
   weight range.
-- **Canvas 2D, not WebGL.** The reference is flat, and flatness is the point. It costs a few KB instead of
-  three.js's 425 KB, which makes `atlas` the cheap style to ship and the honest baseline for "does 3D earn
-  its cost here?".
-- **No webfonts** (the dashboard must work offline), so the serif is a system stack: Iowan Old Style /
-  Palatino / Georgia.
+- **The formation is ours.** The reference's funnel comes from an embedding; ours is generated, so it is
+  labelled as a formation rather than a map. `vortex` exists for this style; the other layouts work too, and
+  the flat ones simply look flat when orbited.
+
+**Correction to a claim I made while building it:** with the flat implementation `atlas` cost a few KB and
+I described it as the cheap baseline for "does 3D earn its 425 KB?". That was an artefact of the misreading.
+`atlas` is three.js like the others, so the question is still open — the honest comparison now is between
+three *styles*, not between a cheap and an expensive one.
