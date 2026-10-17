@@ -59,6 +59,14 @@ reasoning and the measurements are in `openspec/changes/add-review-workflow-dash
 upstream's #117 lands a different answer for the synthesizing default, take upstream's and re-derive the
 room's `PRODUCE_COMMAND` — the copy in `workflow.ts` advertises `--full-snapshots` for this reason.
 
+**What change 4 will add to the first column, and nothing else.** The Architecture room's code is new files
+under `dashboard/src/v2`; its only *upstream-owned* edit is a raised budget in `scripts/build-dashboard.sh`
+(the three.js re-baseline, with the measurement and the reason beside it), plus whatever
+`tests/dashboard_bundle.rs` needs. It stays out of `crates/rgctl-dashboard/` deliberately: that is where a
+producer change collides with #124 and #125, and the room needs no producer change at all — the layouts it
+draws are derived in the room, and the two producer defects it surfaces are recorded upstream instead of
+patched here.
+
 ## Rule 3 — never hand-merge `package-lock.json`
 
 It is generated, it is the largest diff here (+2468 lines), and upstream changes it often. Resolve it by

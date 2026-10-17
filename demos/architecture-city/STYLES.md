@@ -1,6 +1,7 @@
-# Style notes — the three renderings
+# Style notes — two renderings, and one dropped
 
-The same data, drawn three ways. A *style* changes how the channels are drawn, never what they mean.
+The same data, drawn two ways. A *style* changes how the channels are drawn, never what they mean — which is
+why dropping one is cheap: nothing it showed is lost.
 
 ## `blocks`
 
@@ -14,7 +15,9 @@ context. three.js.
 The same geometry as glowing beacons — a beam whose length is the member count, a core at its tip sized by
 the function count, additive blending, bloom, a starfield and a nebula wash. No plate. It reads as a
 population of stars: brightness is attention, and the coupling web looks like filaments between them.
-three.js + post-processing (~425 KB gzipped).
+three.js + post-processing. Measured as vendored here — untree-shaken import-map copy of the whole library —
+the three.js closure is **430 KiB gzipped** (core 286.5 + module 130.8 + OrbitControls 8.3 + post-processing
+4.3). A bundled build tree-shakes it, so this is an upper bound, not the room's cost.
 
 ## Dropped: `atlas`
 

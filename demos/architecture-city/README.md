@@ -1,7 +1,7 @@
 # Architecture City — design demos
 
 A standalone preview of the **Architecture room** (change 4 of the dashboard-v2 sequence): the same real
-data drawn **four layouts × two rendering styles**, with a coupling web and hover tooltips.
+data drawn **five layouts × two rendering styles**, with a coupling web and hover tooltips.
 
 It is a design aid, not the room. It exists so the shape of the thing can be looked at and argued about
 before it is built — and it has already earned that: these demos are what showed that the exported
@@ -53,14 +53,15 @@ MF_BUNDLE=<your-repo>/.rgctl/dashboard npm run data
 Two thresholds are tunable there: `COLOURED` (how many communities have their coupling pairs drawn) and
 `COVER` (the share of coupling those pairs must cover).
 
-## The four layouts
+## The five layouts
 
 | Layout | What it is |
 |---|---|
-| **ring** | **The export's own coordinates.** One radius for every district, ordered by size — 256 districts 33 units apart on a circle. It is honest and it is not a floor plan: every community's members are scattered right around it, so the web has no shape. |
+| **ring** | **The export's own coordinates.** One radius for every district — 256 districts 33 units apart on a circle, 360/256 apart in node-id order. It is honest and it is not a floor plan: every community's members are scattered right around it, so the web has no shape. The node id is not a size ranking either (id 0 is 66,487 and id 255 is the largest, 130,454), so the ring encodes nothing at all. |
 | **clusters** | **Derived here.** Each community in a blob, the largest outermost. |
 | **milky way** | **Derived here.** A two-arm log spiral with a central bulge. |
 | **sphere** | **Derived here.** A globe; each community gets a cap sized by its member count, and solids stand on the surface normal. It has no plate and no grid, and the camera may pass **under** it — a globe has no "down", so the usual horizon clamp is lifted for this layout only. |
+| **vortex** | **Derived here, and a formation rather than a map.** A 3D funnel: districts ordered biggest-community-first, wound down a cone with the widest mouth at the top. It encodes nothing; it exists so a 3D view has a volume to orbit, and the panel says so. |
 
 ## Two styles
 
@@ -82,11 +83,18 @@ one durable lesson from it — read the motion of a reference, not four sampled 
   the camera turns — the ring was 2.7× interpenetrated before this — so each footprint is clamped to
   `0.85 × nearest-neighbour distance`. The panel reports how many districts that binds and the tightest
   factor. **Height is never scaled**: it is the member count.
-- **Community labels are the producer's own strings** and some embed the absolute path the corpus was
-  indexed at, so the demo's output is machine-dependent. They are shown as-is rather than cleaned up,
-  because rewriting them would hide a real defect.
-- **three.js costs about 425 KB gzipped** (core + module + the post-processing closure). That is a real
-  trade against the dashboard bundle's 135 KB, and it is the main open question for the room proper.
+- **Community labels are the producer's own strings**, and **8 of the 256 district labels** (metagraph node
+  labels, not community labels) embed the absolute path the corpus was indexed at — so the demo's output is
+  machine-dependent. They are shown as-is rather than cleaned up, because rewriting them would hide a real
+  defect.
+- **Colour is derived here, not read from the bundle.** `communities[].color` looks usable but **collides**:
+  214 communities carry only **160 distinct** hex values — 43 colours are reused, covering **97 communities**,
+  one of them shared by four. The hue is assigned by golden angle over communities ranked by member count
+  instead, which is unique by construction.
+- **three.js measures 430 KiB gzipped as vendored here** (core 286.5 + module 130.8 + OrbitControls 8.3 + the
+  post-processing closure). That is an **upper bound from an import-map copy of the whole library, untree-shaken**
+  — the room proper bundles it and will measure less. The trade against the dashboard bundle's 136 KiB is real
+  either way, and it is the room's open budget question, not this demo's.
 
 ## Files
 

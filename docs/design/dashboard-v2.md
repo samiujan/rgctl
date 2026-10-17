@@ -106,7 +106,7 @@ Focus is *ambient*: it constrains rooms, it is never a prerequisite to render on
 | Tables | **`@tanstack/react-table`** + **`@tanstack/react-virtual`** | 300k-node lists without DOM blowup; headless, so rendering and styling stay ours |
 | Components | **Radix Primitives** + Tailwind (shadcn/ui optional on top) | The overlay primitives rooms need — dialog, popover, dropdown, tooltip, select, command palette — with focus management, dismissal and ARIA already solved |
 | Client state | **Zustand** | Client-only state, storing **references** (keys and ids), never payloads |
-| 3D | **three.js + `@react-three/fiber`** | Only where depth is genuine data (below); R3F for declarative scene composition and instancing |
+| 3D | **three.js, mounted imperatively** | Only where depth is genuine data (below). **`@react-three/fiber` was considered and rejected for change 4** — see [Why three.js is mounted imperatively](#why-threejs-is-mounted-imperatively) |
 
 ### Decision: migrate to React
 
@@ -248,7 +248,7 @@ provide them. All three are now available again, and the stack table above refle
 |---|---|---|
 | hand-rolled `URLSearchParams` + `popstate` | TanStack Router | typed, validated route params; loaders; no bespoke routing to maintain |
 | hand-rolled overlays on `preact/compat`'s `createPortal` | **Radix Primitives** | focus traps, dismissal, scroll locking, ARIA wiring — the parts that are tedious to get right |
-| three.js mounted imperatively | `@react-three/fiber` | declarative scene graph for change 4 |
+| three.js mounted imperatively | **kept imperative** | `@react-three/fiber` is available now that v2 is React, and was still rejected for change 4 — see below |
 
 **The design itself is unaffected.** The framework never constrained the parts that matter: the
 Instrument/Orientation/Rooms/Lenses architecture, the portable `StableNodeKey` Focus, the receipts, or
@@ -264,6 +264,27 @@ after the framework decision rather than before, which is why the earlier note h
 ### Where 3D is justified
 
 3D only where depth encodes real data. Approved: Code City (architecture), blast-depth shells, trace-as-call-depth, time-lapse drift. **Not** approved: the package or call graph — those are 2D problems and 3D makes them worse.
+
+### Why three.js is mounted imperatively
+
+Change 4 settled this by building it rather than arguing it (the five-layout demos in
+`demos/architecture-city/`, drawn from a real 256-district bundle):
+
+- **The scene has no React state in it.** One instanced mesh, one line-segment set for every coupling edge,
+  and a camera. R3F buys declarative composition of a scene graph; there is no scene graph here to compose.
+- **Cost is measured, not assumed.** three.js as the demo vendors it — core + module + `OrbitControls` + the
+  post-processing closure — is **430 KiB gzipped, untree-shaken** (core 286.5 + module 130.8 + controls 8.3 +
+  post 4.3). That is an upper bound from an import-map copy; a Vite build tree-shakes it. **The room must
+  measure its own bundled delta and raise `BUDGET_KIB_V2` in the same commit, with the reason in
+  `scripts/build-dashboard.sh`** — the budget is not raised in advance of a measurement, and this doc does not
+  quote a number that has not been built.
+- **There is no cheap baseline.** Both 3D styles (`blocks`, `universe`) use three.js, so no 2D variant remains
+  whose budget could be kept. The earlier "hand-rolled isometric projection on Canvas 2D, no new dependency"
+  plan in change 4's design was a size argument made without a measurement, and it could not draw the volume
+  formations (globe, funnel) that make the map legible.
+
+R3F is not rejected in general — it is rejected *for this scene*, which is one mesh and a camera. If a room
+ever needs a composed scene graph, the decision is worth revisiting on the same measurement.
 
 ---
 
@@ -289,7 +310,8 @@ The bundle is embedded into the binary at compile time via `include_dir` from `d
   splitting (v1's `manualChunks` for sigma, graph-layout and CodeMirror) and changes how the engine worker
   loads, so it is a build-pipeline change and not a flag. Not attempted: serving the directory is one
   command, and claiming an offline capability that does not work is worse than not having it.
-- **Bundle size is a gate.** Add a size check to `scripts/build-dashboard.sh` so the embedded-bundle cost is tracked per PR.
+- **Bundle size is a gate.** Add a size check to `scripts/build-dashboard.sh` so the embedded-bundle cost is tracked per PR. A change that adds a runtime dependency raises the budget **in the same commit**, with the measured cost and the reason recorded beside it — never in advance of the measurement, and never by quoting a figure from a non-bundled build. (Change 4 adds three.js: see
+  [Why three.js is mounted imperatively](#why-threejs-is-mounted-imperatively).)
 - **No new required backend dependencies.** v2 consumes the existing columnar v2 payload and JSON sidecars.
 - **Client routes need a server that knows about them.** v2 is the first dashboard with real paths: v1 was
   tabs, so its URL never changed and a reload always asked for `/`. v2's routes are `/$roomId` with
@@ -352,7 +374,7 @@ Rules:
 | 1 | `add-dashboard-v2-shell` | New app + build pipeline, additive behind a flag, harness parity | 0 |
 | 2 | `add-review-workflow-dashboard` | Review Room | 1 |
 | 3 | `add-security-workflow-dashboard` | Risk-weighted triage (severity × centrality × reachability) | 1 |
-| 4 | `add-architecture-city-view` | 3D Code City + drift | 1 |
+| 4 | `add-architecture-city-view` | 3D city from the metagraph + the full coupling web. **Drift is out of scope** (a bundle describes one revision) | 1 |
 | 5 | `add-proof-surface` | Speed matrix, correctness scorecard, determinism, live p95 | 1 |
 | 6 | `add-migration-workflow-dashboard` | Restyle/scope existing MigrationView | 1 |
 | 7 | `add-interprocedural-trace-export` | Emit `BlastSliceTrace` in the JSON envelope instead of trailing stdout (`src/cli/blast_radius.rs:532`) | — |
@@ -369,6 +391,37 @@ parse error: Invalid numeric literal
 ```
 
 The trace must move into the `BlastRadiusResponse` envelope. This is a correctness fix for the JSON contract in [AGENTS.md](../../AGENTS.md), not just a feature — and it is what makes the interprocedural slice data consumable by an agent at all.
+
+### Relationship to upstream #61 (`rg universe`)
+
+[#61](https://github.com/sshaaf/rgctl/issues/61) — the maintainer's own issue — asks for a full rewrite of the
+dashboard as a **single full-screen 3D cosmos** browsed by communities: LOD drill-down
+(communities → packages → functions → symbol), a unified search bar with **animated camera fly-to**, clickable
+CLI actions, a new `--with-universe` flag, and `--with-dashboard` deprecated. It predates the
+`rg-build` → `rgctl` rename, so its flags and paths are stale; its shape is not. It is worth being explicit
+about the overlap, because change 4 is most of that issue's P0 drawing:
+
+**Change 4 covers:** communities in 3D from `communities.json` + `metagraph.json`, the full inter-district
+coupling web, a 3D camera, and five layouts (one the export's, four derived and labelled as such).
+
+**Change 4 does not cover, and does not pretend to:** LOD levels below "district", search with fly-to,
+clickable in-universe actions, any tab removal, `--with-universe`, or a separate `universe/` bundle path.
+Those are what turn a room into a product surface, and each is a change of its own — retiring v1 in particular
+is the maintainer's decision, not ours.
+
+**Two #61 decisions this design takes a position on:**
+
+- **Bundle path.** Reuse `.rgctl/dashboard/` with the existing `RGCTL_DASHBOARD_V2=1` switch. A separate
+  `universe/` directory would fork every gate — size, offline, `include_dir` embed — for a bundle that is
+  largely the same files.
+- **Layout at export time.** #61 asks the producer to precompute the layout, to avoid a cold-start force
+  layout in the browser. That reason does not apply to change 4's layouts, which are closed-form over 256
+  districts with no force simulation, so they are computed in the room and the producer stays untouched. **The
+  moment a force-directed layout is wanted, it moves into the export** and the room reads it.
+
+The measured facts change 4 contributes — the `layout_circle` ring, the deliberately absent `member_indices`,
+the `MAX_METANODES` cap and its `(other)` bucket, the colliding 160-of-214 palette — are things any universe
+implementation needs and would otherwise rediscover.
 
 ---
 
@@ -391,13 +444,13 @@ _Update on every phase PR._
 | v2 app + shell | 1 | **in progress** | React app in `dashboard/src/v2`, own Vite config, own `dist-v2`; Instrument, Orientation, Rooms, Lens control, and the Focus in the URL. Selected with `RGCTL_DASHBOARD_V2=1` — one flag, see below. |
 | v2 Spine lens (code browser) | 1 | **in progress** | Source for the focused symbol beside its CFG, bound both ways; dominance-depth layout; lightweight highlighting. Not syntax-complete and no IDE affordances, deliberately. |
 | v2 CFG·PDG lens | 1 | **done** | The same graph as a surface of its own: full-width, `70vh`, a stat row (blocks · edges · dominance frontiers · exits), a dominance-frontier toggle, the selected block read out above the graph, and a typed absence for a subject the bundle has no CFG for. `?lens=cfgpddg`; shares the drawing, the dominator walk and the loader with the Spine rather than re-deriving them. |
-| v2 test harness + gates | 1 | **done** | Own Vitest config (React, jsdom) and `./scripts/test-dashboard.sh`, which runs every dashboard gate and the offline check as a set. 21 v1 tests + **52 v2 tests**. |
+| v2 test harness + gates | 1 | **done** | Own Vitest config (React, jsdom) and `./scripts/test-dashboard.sh`, which runs every dashboard gate and the offline check as a set. 21 v1 tests + **55 v2 tests**. |
 | v2 bundle-size gate | 1 | **done** | In `scripts/build-dashboard.sh`. Measured: **v1 321 KiB** gzipped, **v2 136 KiB** — v2 ships less than half despite adding React, because it drops CodeMirror and Sigma. |
 | v2 rooms | 2–6 | **in progress** | The Review room exists; the remaining rooms render an explicit "not built yet, change N" state naming what fills them. |
 | v2 lenses other than Spine, Code and CFG·PDG | 1 | **not started** | The lens control offers eight lenses and three render. The rest (Dataflow, Slice/Trace, Blast, Metrics, Time) produce an **empty pane, with no explanation** — `Placeholder` is keyed by *room*, so `Placeholder room="understand"` falls through to `null`. They should state the change that fills them, the way the rooms do. |
-| Review Room | 2 | **done** | Renders the composed artifact: change summary, changed symbols with their call-path deltas, the producing command as a receipt, and **five** states in which it says nothing — no artifact · unreadable · sections the artifact did not produce · truncated · a symbol-scoped export that resolved to nothing — each with the artifact's own reason. A symbol's identity is resolved by joining file + name against the index, never guessed, so an ambiguous name renders without a handoff; the room reads only a view model, and a test fails if an artifact field name reaches it. Warns above the figures when the artifact's revision differs from the browsed graph. 14 render tests against two **real** exports. Not merged to `main` and no PR yet; the one open task (5.6) waits on upstream #117 adding a stable symbol id. |
+| Review Room | 2 | **done, deliberately unmerged** | Renders the composed artifact: change summary, changed symbols with their call-path deltas, the producing command as a receipt, and **five** states in which it says nothing — no artifact · unreadable · sections the artifact did not produce · truncated · a symbol-scoped export that resolved to nothing — each with the artifact's own reason. A symbol's identity is resolved by joining file + name against the index, never guessed, so an ambiguous name renders without a handoff; the room reads only a view model, and a test fails if an artifact field name reaches it. Warns above the figures when the artifact's revision differs from the browsed graph. 14 render tests against two **real** exports, all gates green (55 v2 tests). **Disposition: no upstream PR yet** — the room consumes `rgctl review export`, which is [#117](https://github.com/sshaaf/rgctl/pull/117) and still awaiting review; until it lands the room renders an artifact no released binary produces, and a reviewer would be reading a UI against a contract that can still move. The branch (`feat/review-workflow-dashboard`) holds it; the one open task (5.6) waits on #117 adding a stable symbol id. |
 | Security Room | 3 | **not started** | |
-| Architecture City | 4 | **not started** | |
+| Architecture City | 4 | **spec reconciled; room not started** | The gate (task 1) is done and the **design demos exist**: `demos/architecture-city/`, 5 layouts × 2 styles drawn from a real 256-district / 6,524-edge bundle. They overtook the spec and forced four corrections, each of which would otherwise have shipped a false figure: coverage cannot come from `member_indices` (absent by design above 50k nodes — 0 of 256 carry it, so the spec's formula said "0 of 838,801 covered"); the exported `x`/`y` is a `layout_circle` ring, not a floor plan, and its id order is not a size ranking either; the coupling figure is **every** edge with brightness = `log(weight)`, not the top pairs covering 80%; and the renderer is three.js, with the size gate to be re-baselined against a *measured* bundled delta. Also recorded: `MAX_METANODES = 256` caps the node set and the `(other)` remainder bucket is the largest solid in the city at 15.6% of the graph. Open upstream defect: **8 of 256** district labels embed the corpus checkout path. |
 | Proof surface | 5 | **not started** | |
 | Migration Room restyle | 6 | **not started** | |
 | `BlastSliceTrace` export | 7 | **not started** | JSON envelope corruption repro confirmed. Previously also blocked on two `rgctl slice` defects, now **fixed and under review** — issues sshaaf/rgctl#113/#114, PRs #115/#116. See `audit/slice-addressing.md`. |
@@ -450,4 +503,4 @@ fetches anything.
    the one requirement the maintainer singled out is the one this design cannot currently demonstrate.
    This needs a decision before change 1 is scoped: fold source rendering into change 1, or give it its
    own change ahead of the rooms.
-4. **Proof surface honesty.** Change 5 publishes a speed matrix and correctness scorecard. Publishing only wins would violate rule 5; it must publish the limits too (intra-procedural taint, `Calls`-only blast traversal, approximation regimes).
+5. **Proof surface honesty.** Change 5 publishes a speed matrix and correctness scorecard. Publishing only wins would violate rule 5; it must publish the limits too (intra-procedural taint, `Calls`-only blast traversal, approximation regimes).
