@@ -62,10 +62,20 @@ Two thresholds are tunable there: `COLOURED` (how many communities have their co
 | **milky way** | **Derived here.** A two-arm log spiral with a central bulge. |
 | **sphere** | **Derived here.** A globe; each community gets a cap sized by its member count, and solids stand on the surface normal. It has no plate and no grid, and the camera may pass **under** it — a globe has no "down", so the usual horizon clamp is lifted for this layout only. |
 
-## Two styles
+## Three styles
 
-`blocks` is lit solids on a plate. `universe` is glowing beams and cores with bloom and a starfield. The
-style switcher carries the chosen layout across the page load.
+| Style | What it is |
+|---|---|
+| **blocks** | lit solids on a plate — massing and gaps. three.js |
+| **universe** | glowing beams and cores, bloom, a starfield. three.js + post-processing |
+| **atlas** | an **editorial plate of a point cloud**: flat vivid dots, hairline edges, a serif headline, a legend with counts, a pink accent for the pinned district. Canvas 2D |
+
+The style switcher carries the chosen layout across the page load. `STYLES.md` records how each is built,
+and where `atlas` came from: it is identified from `withmarbleapp/os-taxonomy` → `media/curriculum-viz.gif`,
+an embedding map of 1,000+ curriculum standards. The label `atlas` is ours — see `STYLES.md` for why, and
+for the three deliberate departures from the reference (radius is member count; all edges are drawn with
+brightness by weight; Canvas 2D instead of WebGL, which makes it the cheap style at a few KB against
+three.js's 425 KB).
 
 ## Honest notes
 
@@ -89,6 +99,8 @@ style switcher carries the chosen layout across the page load.
 | `layouts.js` | one place that knows what a layout is: `anchorOf`, `extentOf`, `webOffset` |
 | `controls.js` | the control bar; layout and style, state carried in the URL |
 | `app.js` | the `blocks` view (three.js) |
+| `app-atlas.js`, `atlas.css` | the `atlas` view (Canvas 2D) |
 | `app-universe.js` | the `universe` view (three.js + bloom) |
-| `index.html`, `universe.html`, `preview.css` | the two pages and their shared HUD |
+| `index.html`, `universe.html`, `atlas.html`, `preview.css` | the three pages and their shared HUD |
+| `STYLES.md` | what each style is, and where `atlas` was identified from |
 | `copy-vendor.mjs` | copies three.js into `vendor/` |
