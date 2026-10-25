@@ -277,6 +277,30 @@ pub fn run_export(ctx: &CliContext, args: ReviewExportArgs) -> Result<()> {
             if ctx.format != OutputFormat::Json {
                 eprintln!("wrote {}", path.display());
             }
+
+            // Keep an existing dashboard bundle in step. Only the dashboard export copies this artifact into
+            // the bundle, which made the documented sequence discover -> export -> discover — and that second
+            // discover re-indexes a graph whose digest need not match the one the artifact was composed from
+            // (#125), at which point the Review room correctly says the artifact describes another revision.
+            // Refreshing here removes the trap without touching the graph.
+            let bundle_dir = rgctl_dashboard::default_dashboard_path(&ctx.repo);
+            match rgctl_dashboard::refresh_workflows(&bundle_dir, &ctx.repo) {
+                Ok(true) => {
+                    if ctx.format != OutputFormat::Json {
+                        eprintln!(
+                            "refreshed {}/workflows/{} (the bundle already existed; the graph was not touched)",
+                            bundle_dir.display(),
+                            "review.json"
+                        );
+                    }
+                }
+                Ok(false) => {}
+                Err(err) => {
+                    // The artifact is written and useful on its own; a bundle that could not be refreshed is a
+                    // warning, not a failed export.
+                    eprintln!("warn: could not refresh the dashboard bundle: {err}");
+                }
+            }
         }
     }
 

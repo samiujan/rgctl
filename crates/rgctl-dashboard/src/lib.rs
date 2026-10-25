@@ -430,6 +430,47 @@ fn workflow_artifact_path(repo_root: &Path) -> PathBuf {
         .join(REVIEW_WORKFLOW_FILE)
 }
 
+/// Refresh the workflow artifacts inside an **existing** bundle, without touching its graph.
+///
+/// `rgctl review export` writes `{repo}/.rgctl/workflows/review.json`, and only the dashboard export copies it
+/// into the bundle. That makes the documented sequence `discover` → `review export` → `discover`, and the
+/// second discover re-indexes a graph — which on a corpus where indexing is not bit-reproducible (#125) can
+/// produce a different digest, at which point the Review room correctly warns that its artifact describes
+/// another revision. The dance is easy to get wrong and its failure mode reads like a room defect.
+///
+/// So: if a bundle is already there, copy the fresh artifact in and update the manifest's `workflows`
+/// section, and leave the graph, the payloads and every other manifest field exactly as they were.
+///
+/// Returns `Ok(false)` when there is no bundle to refresh — a repository that has not exported a dashboard
+/// has nothing to keep in step, and creating a bundle from a review export would be a surprising side effect.
+pub fn refresh_workflows(bundle_dir: &Path, repo_root: &Path) -> Result<bool, String> {
+    let manifest_path = bundle_dir.join("manifest.json");
+    if !manifest_path.is_file() {
+        return Ok(false);
+    }
+
+    // The copy and the identity fields come from the same function the dashboard export uses, so the two
+    // paths cannot describe one artifact two ways.
+    let section = export_workflows(repo_root, bundle_dir)?;
+
+    // Read-modify-write as a `Value`, not through the typed manifest: a newer producer's fields must survive
+    // a refresh performed by an older binary, and a typed round-trip would silently drop them.
+    let text = fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("read {}: {e}", manifest_path.display()))?;
+    let mut manifest: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
+    let object = manifest
+        .as_object_mut()
+        .ok_or_else(|| format!("{} is not a JSON object", manifest_path.display()))?;
+    object.insert(
+        "workflows".to_string(),
+        serde_json::to_value(&section).map_err(|e| e.to_string())?,
+    );
+    let json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    fs::write(&manifest_path, &json).map_err(|e| format!("write {}: {e}", manifest_path.display()))?;
+    Ok(true)
+}
+
 fn no_workflows() -> WorkflowsSection {
     WorkflowsSection {
         available: false,
@@ -627,3 +668,61 @@ fn semantic_section(repo_root: &Path) -> Option<manifest::SemanticSection> {
     })
 }
 
+
+#[cfg(test)]
+mod refresh_workflows_tests {
+    use super::*;
+
+    fn write_artifact(repo: &Path, body: &str) {
+        let dir = repo.join(".rgctl").join(WORKFLOWS_DIR);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(REVIEW_WORKFLOW_FILE), body).unwrap();
+    }
+
+    /// The bundle exists and the artifact is fresh: copy it in, describe it, and leave every other manifest
+    /// field alone. The last part is what matters — an older binary refreshing a newer manifest must not drop
+    /// fields it does not know about.
+    #[test]
+    fn refreshes_the_copy_and_the_section_without_disturbing_anything_else() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        let bundle = repo.join(".rgctl").join("dashboard");
+        fs::create_dir_all(&bundle).unwrap();
+        fs::write(
+            bundle.join("manifest.json"),
+            r#"{"schema_version":9,"graph":{"digest":"abc"},"future_field":{"kept":true},"workflows":null}"#,
+        )
+        .unwrap();
+        write_artifact(
+            repo,
+            r#"{"generated_at":"123","provenance":{"graph":{"head_digest":"deadbeef"}}}"#,
+        );
+
+        assert!(refresh_workflows(&bundle, repo).unwrap());
+
+        assert!(bundle.join(WORKFLOWS_DIR).join(REVIEW_WORKFLOW_FILE).is_file());
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(bundle.join("manifest.json")).unwrap()).unwrap();
+        assert_eq!(manifest["graph"]["digest"], "abc", "graph fields are untouched");
+        assert_eq!(
+            manifest["future_field"]["kept"], true,
+            "fields this binary does not know about survive"
+        );
+        assert_eq!(manifest["workflows"]["available"], true);
+        assert_eq!(manifest["workflows"]["review_digest"].as_str().unwrap().len(), 64);
+        assert_eq!(manifest["workflows"]["review_head_digest"], "deadbeef");
+        assert_eq!(manifest["workflows"]["review_generated_at"], "123");
+    }
+
+    /// No bundle, no side effect: creating one from a review export would be a surprising thing for the command
+    /// to do, and the room's own absence state is the honest outcome.
+    #[test]
+    fn does_nothing_when_no_bundle_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        write_artifact(repo, r#"{"generated_at":"1"}"#);
+        let bundle = repo.join(".rgctl").join("dashboard");
+        assert!(!refresh_workflows(&bundle, repo).unwrap());
+        assert!(!bundle.exists(), "no bundle is created");
+    }
+}
